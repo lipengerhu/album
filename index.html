@@ -391,446 +391,112 @@
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
     <script>
         // ==================== 配置信息 ====================
-        const CONFIG = {
-            CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
-            MAX_FILES: 9,
-            CHUNK_SIZE: 0.5 * 1024 * 1024, // 0.5MB分块
-            MAX_RETRIES: 3,
-            MAX_FILE_SIZE: 50 * 1024 * 1024 // 50MB最大文件大小
+        // ==================== 配置信息 ====================
+const CONFIG = {
+    CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
+    MAX_FILES: 9,
+    CHUNK_SIZE: 300 * 1024, // 减小到300KB，Base64后约400KB
+    MAX_RETRIES: 3,
+    MAX_FILE_SIZE: 50 * 1024 * 1024 // 50MB最大文件大小
+};
+
+// ==================== 上传功能 ====================
+async function uploadFile(fileData, signal) {
+    console.log('上传文件:', fileData.file.name, '大小:', fileData.file.size);
+    
+    const fileSize = fileData.file.size;
+    const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
+    
+    // 生成文件指纹
+    if (!fileData.fingerprint) {
+        fileData.fingerprint = await generateFileFingerprint(fileData.file);
+        console.log('文件指纹生成完成:', fileData.fingerprint, '总块数:', totalChunks);
+    }
+    
+    // 上传所有分块
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        // 检查是否取消
+        if (signal.aborted) {
+            throw new DOMException('上传已取消', 'AbortError');
+        }
+        
+        const start = chunkIndex * CONFIG.CHUNK_SIZE;
+        const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
+        const chunk = fileData.file.slice(start, end);
+        
+        console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
+        
+        const chunkBase64 = await readChunkAsBase64(chunk);
+        
+        // 检查Base64后的大小
+        const base64Size = chunkBase64.length;
+        console.log(`分块Base64后大小: ${base64Size} bytes (${(base64Size / 1024).toFixed(1)}KB)`);
+        
+        if (base64Size > 900 * 1024) { // 接近1MB限制
+            console.warn('分块大小接近限制，可能需要进一步减小分块');
+        }
+        
+        // 上传分块
+        const result = await callCloudFunction({
+            action: 'upload_chunk',
+            chunkIndex: chunkIndex,
+            totalChunks: totalChunks,
+            fileName: fileData.file.name,
+            fingerprint: fileData.fingerprint,
+            data: chunkBase64,
+            fileSize: fileSize
+        }, signal);
+        
+        if (!result.success) {
+            throw new Error(`分块上传失败: ${result.message}`);
+        }
+        
+        // 更新单个文件进度
+        fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+        updateFileList(); // 实时更新进度显示
+    }
+    
+    // 完成上传
+    console.log('所有分块上传完成，开始合并文件...');
+    const completeResult = await callCloudFunction({
+        action: 'complete_upload',
+        fileName: fileData.file.name,
+        fingerprint: fileData.fingerprint,
+        totalChunks: totalChunks,
+        fileSize: fileSize
+    }, signal);
+    
+    if (!completeResult.success) {
+        throw new Error('文件合并失败: ' + completeResult.message);
+    }
+    
+    console.log('文件上传完成:', completeResult);
+    return completeResult;
+}
+
+// ==================== 工具函数 ====================
+async function callCloudFunction(data, signal) {
+    console.log('调用云函数，动作:', data.action);
+    
+    try {
+        const safeData = {
+            action: data.action || 'unknown',
+            chunkIndex: data.chunkIndex || 0,
+            totalChunks: data.totalChunks || 1,
+            fileName: data.fileName || 'unknown',
+            fingerprint: data.fingerprint || 'unknown',
+            data: data.data || '',
+            fileSize: data.fileSize || 0,
+            timestamp: Date.now()
         };
 
-        // ==================== 状态管理 ====================
-        let selectedFiles = [];
-        let uploadInProgress = false;
-        let uploadController = null; // 用于取消上传
-
-        // ==================== DOM元素 ====================
-        const elements = {
-            fileInput: document.getElementById('file-input'),
-            uploadArea: document.getElementById('upload-area'),
-            fileList: document.getElementById('file-list'),
-            emptyState: document.getElementById('empty-state'),
-            startUpload: document.getElementById('start-upload'),
-            uploadText: document.getElementById('upload-text'),
-            filesCount: document.getElementById('files-count'),
-            clearFiles: document.getElementById('clear-files'),
-            resultInfo: document.getElementById('result-info'),
-            resultContent: document.getElementById('result-content'),
-            serviceStatus: document.getElementById('service-status'),
-            versionDisplay: document.getElementById('version-display'),
-            overallProgress: document.getElementById('overall-progress'),
-            overallProgressFill: document.getElementById('overall-progress-fill'),
-            overallProgressText: document.getElementById('overall-progress-text')
-        };
-
-        // ==================== 初始化 ====================
-        function init() {
-            console.log('初始化照片上传应用...');
-            
-            // 设置版本号
-            const version = generateVersion();
-            elements.versionDisplay.textContent = version;
-            
-            // 初始化事件监听
-            initEventListeners();
-            
-            // 检查服务状态
-            checkServiceStatus();
-            
-            // 移动端优化
-            setupMobileOptimizations();
-            
-            console.log('应用初始化完成');
-        }
-
-        function generateVersion() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            
-            return `2.0.${year}${month}${day}${hours}${minutes}`;
-        }
-
-        function setupMobileOptimizations() {
-            // 阻止移动端双击缩放
-            let lastTouchEnd = 0;
-            document.addEventListener('touchend', function (event) {
-                const now = Date.now();
-                if (now - lastTouchEnd <= 300) {
-                    event.preventDefault();
-                }
-                lastTouchEnd = now;
-            }, false);
-        }
-
-        function initEventListeners() {
-            console.log('初始化事件监听器...');
-            
-            // 上传区域点击事件
-            elements.uploadArea.addEventListener('click', function() {
-                console.log('点击上传区域');
-                elements.fileInput.click();
-            });
-
-            // 文件选择变化事件
-            elements.fileInput.addEventListener('change', function(e) {
-                console.log('文件选择发生变化');
-                handleFileSelect(e);
-            });
-
-            // 开始上传按钮事件
-            elements.startUpload.addEventListener('click', function() {
-                console.log('点击开始上传按钮');
-                
-                if (!elements.startUpload.disabled && !uploadInProgress) {
-                    startUpload();
-                }
-            });
-
-            // 清空按钮事件
-            elements.clearFiles.addEventListener('click', function() {
-                console.log('点击清空按钮');
-                clearFiles();
-            });
-
-            // 设置拖拽功能
-            setupDragAndDrop();
-            
-            console.log('事件监听器初始化完成');
-        }
-
-        // ==================== 文件选择处理 ====================
-        function handleFileSelect(e) {
-            const files = Array.from(e.target.files);
-            console.log('选择的文件数量:', files.length);
-            
-            if (files.length === 0) {
-                console.log('没有选择文件');
-                return;
-            }
-            
-            // 检查文件数量限制
-            if (selectedFiles.length + files.length > CONFIG.MAX_FILES) {
-                alert(`最多只能选择${CONFIG.MAX_FILES}张照片`);
-                return;
-            }
-            
-            // 添加新文件
-            let validFilesAdded = 0;
-            files.forEach(file => {
-                // 检查文件大小
-                if (file.size > CONFIG.MAX_FILE_SIZE) {
-                    alert(`文件 ${file.name} 超过 ${CONFIG.MAX_FILE_SIZE / 1024 / 1024}MB 限制，已跳过`);
-                    return;
-                }
-                
-                const existingFile = selectedFiles.find(f => 
-                    f.file.name === file.name && f.file.size === file.size
-                );
-                
-                if (!existingFile) {
-                    selectedFiles.push({
-                        file: file,
-                        status: 'pending',
-                        progress: 0,
-                        fingerprint: null,
-                        fileId: null,
-                        error: null
-                    });
-                    validFilesAdded++;
-                    console.log('添加文件:', file.name);
-                }
-            });
-            
-            if (validFilesAdded > 0) {
-                updateFileList();
-                updateUploadButton();
-            }
-            
-            // 清空input以便重复选择相同文件
-            elements.fileInput.value = '';
-        }
-
-        function updateFileList() {
-            console.log('更新文件列表，文件数量:', selectedFiles.length);
-            
-            if (selectedFiles.length === 0) {
-                elements.fileList.innerHTML = '<div class="empty-state">暂无文件，请选择照片</div>';
-                elements.emptyState.style.display = 'block';
-                return;
-            }
-            
-            elements.emptyState.style.display = 'none';
-            
-            elements.fileList.innerHTML = selectedFiles.map((fileData, index) => {
-                const errorInfo = fileData.error ? 
-                    `<div class="chunk-info" style="color: #dc3545;">错误: ${fileData.error}</div>` : '';
-                
-                return `
-                <div class="file-item">
-                    <div class="file-info">
-                        <div class="file-name" title="${fileData.file.name}">${fileData.file.name}</div>
-                        <div class="file-size">${formatFileSize(fileData.file.size)}</div>
-                        ${errorInfo}
-                        <div class="progress-container">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${fileData.progress}%"></div>
-                            </div>
-                            <div class="progress-text">${fileData.progress}%</div>
-                        </div>
-                    </div>
-                    <div class="file-status status-${fileData.status}">
-                        ${getStatusText(fileData.status)}
-                    </div>
-                </div>
-                `;
-            }).join('');
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        function updateUploadButton() {
-            const hasFiles = selectedFiles.length > 0;
-            const hasPendingFiles = selectedFiles.some(f => f.status === 'pending' || f.status === 'error');
-            const shouldEnable = hasFiles && hasPendingFiles && !uploadInProgress;
-            
-            elements.startUpload.disabled = !shouldEnable;
-            elements.filesCount.textContent = selectedFiles.length;
-            elements.filesCount.style.display = hasFiles ? 'inline-block' : 'none';
-            elements.uploadText.textContent = uploadInProgress ? '上传中...' : '开始上传';
-            
-            console.log('更新上传按钮状态:', {
-                有文件: hasFiles,
-                有待上传文件: hasPendingFiles,
-                上传中: uploadInProgress,
-                按钮启用: shouldEnable
-            });
-        }
-
-        function getStatusText(status) {
-            const statusMap = {
-                'pending': '等待',
-                'uploading': '上传中',
-                'completed': '完成',
-                'error': '失败'
-            };
-            return statusMap[status] || status;
-        }
-
-        // ==================== 上传功能 ====================
-        async function startUpload() {
-            console.log('开始上传流程...');
-            
-            if (uploadInProgress) {
-                console.log('上传正在进行中，跳过');
-                return;
-            }
-            
-            const pendingFiles = selectedFiles.filter(f => f.status === 'pending' || f.status === 'error');
-            if (pendingFiles.length === 0) {
-                console.log('没有待上传的文件');
-                return;
-            }
-            
-            uploadInProgress = true;
-            uploadController = new AbortController();
-            updateUploadButton();
-            
-            // 显示整体进度条
-            elements.overallProgress.style.display = 'block';
-            updateOverallProgress(0, pendingFiles.length);
-            
-            let successCount = 0;
-            let errorCount = 0;
-            
-            console.log('开始上传文件，待上传数:', pendingFiles.length);
-            
-            for (let i = 0; i < pendingFiles.length; i++) {
-                // 检查是否取消上传
-                if (uploadController.signal.aborted) {
-                    console.log('上传已被取消');
-                    break;
-                }
-                
-                const fileData = pendingFiles[i];
-                console.log(`处理文件 ${i + 1}/${pendingFiles.length}:`, fileData.file.name);
-                
-                fileData.status = 'uploading';
-                fileData.error = null;
-                fileData.progress = 0;
-                updateFileList();
-                
-                try {
-                    const result = await uploadFile(fileData, uploadController.signal);
-                    fileData.status = 'completed';
-                    fileData.progress = 100;
-                    fileData.fileId = result.fileID;
-                    successCount++;
-                    console.log('文件上传成功:', fileData.file.name, '文件ID:', result.fileID);
-                } catch (error) {
-                    fileData.status = 'error';
-                    fileData.error = error.message;
-                    fileData.progress = 0;
-                    errorCount++;
-                    console.error('文件上传失败:', fileData.file.name, error);
-                    
-                    // 如果是因为取消导致的错误，停止后续上传
-                    if (error.name === 'AbortError') {
-                        break;
-                    }
-                }
-                
-                // 更新整体进度
-                const currentProgress = i + 1;
-                updateOverallProgress(currentProgress, pendingFiles.length);
-                updateFileList();
-            }
-            
-            uploadInProgress = false;
-            uploadController = null;
-            updateUploadButton();
-            
-            // 隐藏整体进度条
-            elements.overallProgress.style.display = 'none';
-            showResult(successCount, errorCount);
-            
-            console.log('上传完成:', { 成功: successCount, 失败: errorCount });
-        }
-
-        // 更新整体上传进度
-        function updateOverallProgress(current, total) {
-            const percent = Math.round((current / total) * 100);
-            elements.overallProgressFill.style.width = percent + '%';
-            elements.overallProgressText.textContent = 
-                `已上传 ${current}/${total} 个文件 (${percent}%)`;
-            
-            console.log(`整体上传进度: ${current}/${total} (${percent}%)`);
-        }
-
-        async function uploadFile(fileData, signal) {
-            console.log('上传文件:', fileData.file.name, '大小:', fileData.file.size);
-            
-            const fileSize = fileData.file.size;
-            const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
-            
-            // 生成文件指纹
-            if (!fileData.fingerprint) {
-                fileData.fingerprint = await generateFileFingerprint(fileData.file);
-                console.log('文件指纹生成完成:', fileData.fingerprint);
-            }
-            
-            // 上传所有分块
-            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-                // 检查是否取消
-                if (signal.aborted) {
-                    throw new DOMException('上传已取消', 'AbortError');
-                }
-                
-                const start = chunkIndex * CONFIG.CHUNK_SIZE;
-                const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
-                const chunk = fileData.file.slice(start, end);
-                
-                console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
-                
-                const chunkBase64 = await readChunkAsBase64(chunk);
-                
-                // 上传分块
-                const result = await callCloudFunction({
-                    action: 'upload_chunk',
-                    chunkIndex: chunkIndex,
-                    totalChunks: totalChunks,
-                    fileName: fileData.file.name,
-                    fingerprint: fileData.fingerprint,
-                    data: chunkBase64,
-                    fileSize: fileSize
-                }, signal);
-                
-                if (!result.success) {
-                    throw new Error(`分块上传失败: ${result.message}`);
-                }
-                
-                // 更新单个文件进度（可选，现在主要看整体进度）
-                fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
-            }
-            
-            // 完成上传
-            console.log('所有分块上传完成，开始合并文件...');
-            const completeResult = await callCloudFunction({
-                action: 'complete_upload',
-                fileName: fileData.file.name,
-                fingerprint: fileData.fingerprint,
-                totalChunks: totalChunks,
-                fileSize: fileSize
-            }, signal);
-            
-            if (!completeResult.success) {
-                throw new Error('文件合并失败: ' + completeResult.message);
-            }
-            
-            console.log('文件上传完成:', completeResult);
-            return completeResult;
-        }
-
-        // ==================== 工具函数 ====================
-        async function generateFileFingerprint(file) {
-            return new Promise((resolve) => {
-                const spark = new SparkMD5.ArrayBuffer();
-                const reader = new FileReader();
-                
-                reader.onload = (e) => {
-                    spark.append(e.target.result);
-                    const hash = spark.end();
-                    console.log('文件指纹生成成功:', hash);
-                    resolve(hash);
-                };
-                
-                reader.onerror = () => {
-                    // 如果生成失败，使用备用指纹
-                    const backupHash = 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                    console.log('文件指纹生成失败，使用备用指纹:', backupHash);
-                    resolve(backupHash);
-                };
-                
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
-        function readChunkAsBase64(chunk) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    // 返回纯Base64数据（去掉data URL前缀）
-                    const base64Data = reader.result.split(',')[1];
-                    resolve(base64Data);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(chunk);
-            });
-        }
-
-        async function callCloudFunction(data, signal) {
-            console.log('调用云函数，动作:', data.action);
-            
+        // 添加重试机制
+        for (let attempt = 0; attempt < CONFIG.MAX_RETRIES; attempt++) {
             try {
-                const safeData = {
-                    action: data.action || 'unknown',
-                    chunkIndex: data.chunkIndex || 0,
-                    totalChunks: data.totalChunks || 1,
-                    fileName: data.fileName || 'unknown',
-                    fingerprint: data.fingerprint || 'unknown',
-                    data: data.data || '',
-                    fileSize: data.fileSize || 0,
-                    timestamp: Date.now()
-                };
+                if (attempt > 0) {
+                    console.log(`第${attempt + 1}次重试...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                }
 
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
@@ -838,11 +504,14 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(safeData),
-                    signal: signal,
-                    mode: 'cors' // 明确指定 CORS 模式
+                    signal: signal
                 });
                 
                 console.log('云函数响应状态:', response.status);
+                
+                if (response.status === 413) {
+                    throw new Error('请求体过大，请减小分块大小');
+                }
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status} ${response.statusText}`);
@@ -853,20 +522,29 @@
                 return result;
                 
             } catch (error) {
-                console.error('云函数调用失败:', error);
-                
+                if (attempt === CONFIG.MAX_RETRIES - 1) {
+                    throw error;
+                }
                 if (error.name === 'AbortError') {
                     throw error;
                 }
-                
-                // 返回模拟响应，确保前端不崩溃
-                return {
-                    success: false,
-                    message: '网络请求失败: ' + error.message,
-                    isFallback: true
-                };
+                console.warn(`第${attempt + 1}次尝试失败:`, error.message);
             }
         }
+        
+    } catch (error) {
+        console.error('云函数调用失败:', error);
+        
+        if (error.name === 'AbortError') {
+            throw error;
+        }
+        
+        return {
+            success: false,
+            message: '网络请求失败: ' + error.message
+        };
+    }
+}
 
         async function checkServiceStatus() {
             try {
