@@ -838,7 +838,8 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(safeData),
-                    signal: signal
+                    signal: signal,
+                    mode: 'cors' // 明确指定 CORS 模式
                 });
                 
                 console.log('云函数响应状态:', response.status);
