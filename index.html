@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>上传照片 - 多文件支持</title>
+    <title>上传照片 - 分块上传支持</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -223,6 +223,49 @@
             padding: 30px 20px; 
             font-size: 14px;
         }
+
+        .chunk-info {
+            font-size: 10px;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        /* 整体上传进度 */
+        .overall-progress {
+            margin: 15px 0;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .overall-progress-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        
+        .overall-progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        
+        .overall-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.3s ease;
+        }
+        
+        .overall-progress-text {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
         
         @media (max-width: 480px) {
             body {
@@ -299,7 +342,7 @@
 <body>
     <div class="container">
         <h1>📸 上传照片</h1>
-        <p class="description">支持多张照片上传，自动获取位置信息</p>
+        <p class="description">支持多张照片上传，自动分块处理大文件</p>
         
         <div class="service-status" id="service-status">
             🔄 检查服务状态...
@@ -310,6 +353,15 @@
             <p>点击选择照片</p>
             <div class="format-list">最多9张照片，支持所有格式</div>
             <input type="file" id="file-input" accept="image/*" multiple>
+        </div>
+        
+        <!-- 整体上传进度 -->
+        <div class="overall-progress" id="overall-progress">
+            <div class="overall-progress-title">📊 整体上传进度</div>
+            <div class="overall-progress-bar">
+                <div class="overall-progress-fill" id="overall-progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="overall-progress-text" id="overall-progress-text">等待上传...</div>
         </div>
         
         <div class="file-list" id="file-list">
@@ -332,7 +384,7 @@
         </div>
         
         <div class="version-info">
-            版本: <span id="version-display">1.0.20240927.1</span>
+            版本: <span id="version-display">2.0.20240927.1</span>
         </div>
     </div>
 
@@ -342,13 +394,15 @@
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
             MAX_FILES: 9,
-            CHUNK_SIZE: 0.5 * 1024 * 1024,
-            MAX_RETRIES: 3
+            CHUNK_SIZE: 0.5 * 1024 * 1024, // 0.5MB分块
+            MAX_RETRIES: 3,
+            MAX_FILE_SIZE: 50 * 1024 * 1024 // 50MB最大文件大小
         };
 
         // ==================== 状态管理 ====================
         let selectedFiles = [];
         let uploadInProgress = false;
+        let uploadController = null; // 用于取消上传
 
         // ==================== DOM元素 ====================
         const elements = {
@@ -363,7 +417,10 @@
             resultInfo: document.getElementById('result-info'),
             resultContent: document.getElementById('result-content'),
             serviceStatus: document.getElementById('service-status'),
-            versionDisplay: document.getElementById('version-display')
+            versionDisplay: document.getElementById('version-display'),
+            overallProgress: document.getElementById('overall-progress'),
+            overallProgressFill: document.getElementById('overall-progress-fill'),
+            overallProgressText: document.getElementById('overall-progress-text')
         };
 
         // ==================== 初始化 ====================
@@ -394,7 +451,7 @@
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
             
-            return `1.0.${year}${month}${day}${hours}${minutes}`;
+            return `2.0.${year}${month}${day}${hours}${minutes}`;
         }
 
         function setupMobileOptimizations() {
@@ -426,11 +483,7 @@
 
             // 开始上传按钮事件
             elements.startUpload.addEventListener('click', function() {
-                console.log('点击开始上传按钮', {
-                    disabled: elements.startUpload.disabled,
-                    uploadInProgress: uploadInProgress,
-                    fileCount: selectedFiles.length
-                });
+                console.log('点击开始上传按钮');
                 
                 if (!elements.startUpload.disabled && !uploadInProgress) {
                     startUpload();
@@ -466,7 +519,14 @@
             }
             
             // 添加新文件
+            let validFilesAdded = 0;
             files.forEach(file => {
+                // 检查文件大小
+                if (file.size > CONFIG.MAX_FILE_SIZE) {
+                    alert(`文件 ${file.name} 超过 ${CONFIG.MAX_FILE_SIZE / 1024 / 1024}MB 限制，已跳过`);
+                    return;
+                }
+                
                 const existingFile = selectedFiles.find(f => 
                     f.file.name === file.name && f.file.size === file.size
                 );
@@ -476,14 +536,22 @@
                         file: file,
                         status: 'pending',
                         progress: 0,
-                        fingerprint: null
+                        fingerprint: null,
+                        fileId: null,
+                        error: null
                     });
+                    validFilesAdded++;
                     console.log('添加文件:', file.name);
                 }
             });
             
-            updateFileList();
-            updateUploadButton();
+            if (validFilesAdded > 0) {
+                updateFileList();
+                updateUploadButton();
+            }
+            
+            // 清空input以便重复选择相同文件
+            elements.fileInput.value = '';
         }
 
         function updateFileList() {
@@ -497,11 +565,16 @@
             
             elements.emptyState.style.display = 'none';
             
-            elements.fileList.innerHTML = selectedFiles.map((fileData, index) => `
+            elements.fileList.innerHTML = selectedFiles.map((fileData, index) => {
+                const errorInfo = fileData.error ? 
+                    `<div class="chunk-info" style="color: #dc3545;">错误: ${fileData.error}</div>` : '';
+                
+                return `
                 <div class="file-item">
                     <div class="file-info">
                         <div class="file-name" title="${fileData.file.name}">${fileData.file.name}</div>
-                        <div class="file-size">${(fileData.file.size / 1024 / 1024).toFixed(2)} MB</div>
+                        <div class="file-size">${formatFileSize(fileData.file.size)}</div>
+                        ${errorInfo}
                         <div class="progress-container">
                             <div class="progress-bar">
                                 <div class="progress-fill" style="width: ${fileData.progress}%"></div>
@@ -513,12 +586,22 @@
                         ${getStatusText(fileData.status)}
                     </div>
                 </div>
-            `).join('');
+                `;
+            }).join('');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         function updateUploadButton() {
             const hasFiles = selectedFiles.length > 0;
-            const shouldEnable = hasFiles && !uploadInProgress;
+            const hasPendingFiles = selectedFiles.some(f => f.status === 'pending' || f.status === 'error');
+            const shouldEnable = hasFiles && hasPendingFiles && !uploadInProgress;
             
             elements.startUpload.disabled = !shouldEnable;
             elements.filesCount.textContent = selectedFiles.length;
@@ -527,6 +610,7 @@
             
             console.log('更新上传按钮状态:', {
                 有文件: hasFiles,
+                有待上传文件: hasPendingFiles,
                 上传中: uploadInProgress,
                 按钮启用: shouldEnable
             });
@@ -551,71 +635,111 @@
                 return;
             }
             
-            if (selectedFiles.length === 0) {
-                console.log('没有文件可上传');
+            const pendingFiles = selectedFiles.filter(f => f.status === 'pending' || f.status === 'error');
+            if (pendingFiles.length === 0) {
+                console.log('没有待上传的文件');
                 return;
             }
             
             uploadInProgress = true;
+            uploadController = new AbortController();
             updateUploadButton();
+            
+            // 显示整体进度条
+            elements.overallProgress.style.display = 'block';
+            updateOverallProgress(0, pendingFiles.length);
             
             let successCount = 0;
             let errorCount = 0;
             
-            console.log('开始上传文件，总数:', selectedFiles.length);
+            console.log('开始上传文件，待上传数:', pendingFiles.length);
             
-            for (let i = 0; i < selectedFiles.length; i++) {
-                const fileData = selectedFiles[i];
-                console.log(`处理文件 ${i + 1}/${selectedFiles.length}:`, fileData.file.name);
-                
-                if (fileData.status === 'completed') {
-                    console.log('文件已完成，跳过');
-                    continue;
+            for (let i = 0; i < pendingFiles.length; i++) {
+                // 检查是否取消上传
+                if (uploadController.signal.aborted) {
+                    console.log('上传已被取消');
+                    break;
                 }
                 
+                const fileData = pendingFiles[i];
+                console.log(`处理文件 ${i + 1}/${pendingFiles.length}:`, fileData.file.name);
+                
                 fileData.status = 'uploading';
+                fileData.error = null;
+                fileData.progress = 0;
                 updateFileList();
                 
                 try {
-                    await uploadFile(fileData);
+                    const result = await uploadFile(fileData, uploadController.signal);
                     fileData.status = 'completed';
                     fileData.progress = 100;
+                    fileData.fileId = result.fileID;
                     successCount++;
-                    console.log('文件上传成功:', fileData.file.name);
+                    console.log('文件上传成功:', fileData.file.name, '文件ID:', result.fileID);
                 } catch (error) {
                     fileData.status = 'error';
+                    fileData.error = error.message;
+                    fileData.progress = 0;
                     errorCount++;
                     console.error('文件上传失败:', fileData.file.name, error);
+                    
+                    // 如果是因为取消导致的错误，停止后续上传
+                    if (error.name === 'AbortError') {
+                        break;
+                    }
                 }
                 
+                // 更新整体进度
+                const currentProgress = i + 1;
+                updateOverallProgress(currentProgress, pendingFiles.length);
                 updateFileList();
             }
             
             uploadInProgress = false;
+            uploadController = null;
             updateUploadButton();
+            
+            // 隐藏整体进度条
+            elements.overallProgress.style.display = 'none';
             showResult(successCount, errorCount);
             
             console.log('上传完成:', { 成功: successCount, 失败: errorCount });
         }
 
-        async function uploadFile(fileData) {
-            console.log('上传单个文件:', fileData.file.name);
+        // 更新整体上传进度
+        function updateOverallProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            elements.overallProgressFill.style.width = percent + '%';
+            elements.overallProgressText.textContent = 
+                `已上传 ${current}/${total} 个文件 (${percent}%)`;
             
-            // 生成文件指纹
-            fileData.fingerprint = await generateFileFingerprint(fileData.file);
-            console.log('文件指纹生成完成');
+            console.log(`整体上传进度: ${current}/${total} (${percent}%)`);
+        }
+
+        async function uploadFile(fileData, signal) {
+            console.log('上传文件:', fileData.file.name, '大小:', fileData.file.size);
             
             const fileSize = fileData.file.size;
             const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
-            console.log('文件分块信息:', { 大小: fileSize, 块数: totalChunks });
             
-            // 分块上传
+            // 生成文件指纹
+            if (!fileData.fingerprint) {
+                fileData.fingerprint = await generateFileFingerprint(fileData.file);
+                console.log('文件指纹生成完成:', fileData.fingerprint);
+            }
+            
+            // 上传所有分块
             for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                // 检查是否取消
+                if (signal.aborted) {
+                    throw new DOMException('上传已取消', 'AbortError');
+                }
+                
                 const start = chunkIndex * CONFIG.CHUNK_SIZE;
                 const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
                 const chunk = fileData.file.slice(start, end);
                 
-                console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}`);
+                console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
                 
                 const chunkBase64 = await readChunkAsBase64(chunk);
                 
@@ -626,31 +750,33 @@
                     totalChunks: totalChunks,
                     fileName: fileData.file.name,
                     fingerprint: fileData.fingerprint,
-                    data: chunkBase64
-                });
+                    data: chunkBase64,
+                    fileSize: fileSize
+                }, signal);
                 
                 if (!result.success) {
                     throw new Error(`分块上传失败: ${result.message}`);
                 }
                 
-                // 更新进度
+                // 更新单个文件进度（可选，现在主要看整体进度）
                 fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
-                updateFileList();
             }
             
             // 完成上传
+            console.log('所有分块上传完成，开始合并文件...');
             const completeResult = await callCloudFunction({
                 action: 'complete_upload',
                 fileName: fileData.file.name,
                 fingerprint: fileData.fingerprint,
                 totalChunks: totalChunks,
                 fileSize: fileSize
-            });
+            }, signal);
             
             if (!completeResult.success) {
                 throw new Error('文件合并失败: ' + completeResult.message);
             }
             
+            console.log('文件上传完成:', completeResult);
             return completeResult;
         }
 
@@ -659,38 +785,42 @@
             return new Promise((resolve) => {
                 const spark = new SparkMD5.ArrayBuffer();
                 const reader = new FileReader();
+                
                 reader.onload = (e) => {
                     spark.append(e.target.result);
-                    resolve(spark.end());
+                    const hash = spark.end();
+                    console.log('文件指纹生成成功:', hash);
+                    resolve(hash);
                 };
+                
                 reader.onerror = () => {
                     // 如果生成失败，使用备用指纹
-                    resolve('backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+                    const backupHash = 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    console.log('文件指纹生成失败，使用备用指纹:', backupHash);
+                    resolve(backupHash);
                 };
+                
                 reader.readAsArrayBuffer(file);
             });
         }
 
         function readChunkAsBase64(chunk) {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
                     // 返回纯Base64数据（去掉data URL前缀）
                     const base64Data = reader.result.split(',')[1];
                     resolve(base64Data);
                 };
-                reader.onerror = () => {
-                    resolve(''); // 出错时返回空字符串
-                };
+                reader.onerror = reject;
                 reader.readAsDataURL(chunk);
             });
         }
 
-        async function callCloudFunction(data) {
+        async function callCloudFunction(data, signal) {
             console.log('调用云函数，动作:', data.action);
             
             try {
-                // 准备安全的数据
                 const safeData = {
                     action: data.action || 'unknown',
                     chunkIndex: data.chunkIndex || 0,
@@ -707,7 +837,8 @@
                     headers: { 
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(safeData)
+                    body: JSON.stringify(safeData),
+                    signal: signal
                 });
                 
                 console.log('云函数响应状态:', response.status);
@@ -717,11 +848,15 @@
                 }
                 
                 const result = await response.json();
-                console.log('云函数响应成功');
+                console.log('云函数响应成功:', result);
                 return result;
                 
             } catch (error) {
                 console.error('云函数调用失败:', error);
+                
+                if (error.name === 'AbortError') {
+                    throw error;
+                }
                 
                 // 返回模拟响应，确保前端不崩溃
                 return {
@@ -761,6 +896,7 @@
                 updateFileList();
                 updateUploadButton();
                 elements.resultInfo.style.display = 'none';
+                elements.overallProgress.style.display = 'none';
             } else {
                 console.log('上传进行中，无法清空');
                 alert('上传进行中，请等待完成后清空');
