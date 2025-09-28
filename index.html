@@ -739,9 +739,9 @@
         async function checkServiceStatus() {
             try {
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'health_check' })
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                   
                 });
                 
                 if (response.ok) {
@@ -812,3 +812,4 @@
     </script>
 </body>
 </html>
+
