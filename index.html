@@ -321,11 +321,11 @@
     <script>
         // ==================== 配置信息 ====================
         const CONFIG = {
-            CLOUD_FUNCTION_URL: 'https://photo-upload-proxy.55868331.workers.dev/',
+             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
     MAX_FILES: 9,
-    CHUNK_SIZE: 200 * 1024, // 200KB 分块
+    CHUNK_SIZE: 50 * 1024, // 50KB - 确保不会超过限制
     MAX_RETRIES: 3,
-    MAX_FILE_SIZE: 10 * 1024 * 1024 // 10MB最大文件大小
+    MAX_FILE_SIZE: 2 * 1024 * 1024 // 2MB最大文件大小（测试用）
         };
 
         // ==================== 状态管理 ====================
