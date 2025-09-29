@@ -271,7 +271,7 @@
 <body>
     <div class="container">
         <h1>📸 上传照片</h1>
-        <p class="description">支持大文件分块上传，无大小限制</p>
+        <p class="description">支持多张照片上传</p>
         
         <div class="service-status" id="service-status">
             🔄 检查服务状态...
@@ -280,7 +280,7 @@
         <div class="upload-area" id="upload-area">
             <div class="upload-icon">📁</div>
             <p>点击选择照片</p>
-            <div class="format-list">支持所有格式，自动分块上传</div>
+            <div class="format-list">无照片大小和数量限制</div>
             <input type="file" id="file-input" accept="image/*" multiple>
         </div>
         
@@ -322,10 +322,10 @@
         // ==================== 配置信息 ====================
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
-            MAX_FILES: 9,
+            MAX_FILES: 999, // 移除数量限制，设置一个很大的值
             CHUNK_SIZE: 500 * 1024, // 500KB - 确保不会超过1MB限制
             MAX_RETRIES: 3,
-            MAX_FILE_SIZE: 100 * 1024 * 1024 // 100MB最大文件大小（实际无限制，但设置一个合理值）
+            MAX_FILE_SIZE: 100 * 1024 * 1024 * 1024 // 100GB - 基本上无限制
         };
 
         // ==================== 状态管理 ====================
@@ -429,14 +429,12 @@
             
             if (files.length === 0) return;
             
-            if (selectedFiles.length + files.length > CONFIG.MAX_FILES) {
-                alert(`最多只能选择${CONFIG.MAX_FILES}张照片`);
-                return;
-            }
+            // 移除文件数量限制检查
             
             let validFilesAdded = 0;
             files.forEach(file => {
                 // 移除文件大小限制检查
+                
                 const existingFile = selectedFiles.find(f => 
                     f.file.name === file.name && f.file.size === file.size
                 );
@@ -608,7 +606,7 @@
                 console.log('文件指纹生成完成:', fileData.fingerprint);
             }
             
-            // 读取整个文件为base64（用于complete_upload）
+            // 读取整个文件为base64（用于complete_upload的fileData参数）
             const completeFileBase64 = await readFileAsBase64(fileData.file);
             
             // 上传所有分块
@@ -645,7 +643,7 @@
                 updateFileList();
             }
             
-            // 完成上传 - 关键修复：发送完整的fileData
+            // 完成上传 - 关键修复：发送fileData参数
             console.log('所有分块上传完成，开始合并文件...');
             const completeResult = await callCloudFunction({
                 action: 'complete_upload',
@@ -699,12 +697,12 @@
             });
         }
 
+        // 新增：读取整个文件为base64
         function readFileAsBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
-                    const base64Data = reader.result.split(',')[1];
-                    resolve(base64Data);
+                    resolve(reader.result);
                 };
                 reader.onerror = reject;
                 reader.readAsDataURL(file);
