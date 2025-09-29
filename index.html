@@ -568,67 +568,74 @@
         }
 
         async function uploadFile(fileData, signal) {
-            console.log('上传文件:', fileData.file.name, '大小:', fileData.file.size);
-            
-            const fileSize = fileData.file.size;
-            const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
-            
-            // 生成文件指纹
-            if (!fileData.fingerprint) {
-                fileData.fingerprint = await generateFileFingerprint(fileData.file);
-                console.log('文件指纹生成完成:', fileData.fingerprint);
-            }
-            
-            // 上传所有分块
-            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-                if (signal.aborted) {
-                    throw new DOMException('上传已取消', 'AbortError');
-                }
-                
-                const start = chunkIndex * CONFIG.CHUNK_SIZE;
-                const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
-                const chunk = fileData.file.slice(start, end);
-                
-                console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
-                
-                const chunkBase64 = await readChunkAsBase64(chunk);
-                
-                // 上传分块
-                const result = await callCloudFunction({
-                    action: 'upload_chunk',
-                    chunkIndex: chunkIndex,
-                    totalChunks: totalChunks,
-                    fileName: fileData.file.name,
-                    fingerprint: fileData.fingerprint,
-                    data: chunkBase64,
-                    fileSize: fileSize
-                }, signal);
-                
-                if (!result.success) {
-                    throw new Error(`分块上传失败: ${result.message}`);
-                }
-                
-                fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
-                updateFileList();
-            }
-            
-            // 完成上传 - 绝对没有fileData参数
-            console.log('所有分块上传完成，开始合并文件...');
-            const completeResult = await callCloudFunction({
-                action: 'complete_upload',
-                fileName: fileData.file.name,
-                fingerprint: fileData.fingerprint,
-                totalChunks: totalChunks,
-                fileSize: fileSize
-            }, signal);
-            
-            if (!completeResult.success) {
-                throw new Error('文件合并失败: ' + completeResult.message);
-            }
-            
-            console.log('文件上传完成:', completeResult);
-            return completeResult;
+    console.log('上传文件:', fileData.file.name, '大小:', fileData.file.size);
+    
+    const fileSize = fileData.file.size;
+    const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
+    console.log('计算的总块数:', totalChunks, '分块大小:', CONFIG.CHUNK_SIZE);
+    
+    // 生成文件指纹
+    if (!fileData.fingerprint) {
+        fileData.fingerprint = await generateFileFingerprint(fileData.file);
+        console.log('文件指纹生成完成:', fileData.fingerprint);
+    }
+    
+    console.log('开始上传分块...');
+    
+    // 上传所有分块
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        if (signal.aborted) {
+            throw new DOMException('上传已取消', 'AbortError');
         }
+        
+        const start = chunkIndex * CONFIG.CHUNK_SIZE;
+        const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
+        const chunk = fileData.file.slice(start, end);
+        
+        console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
+        
+        const chunkBase64 = await readChunkAsBase64(chunk);
+        console.log(`分块 ${chunkIndex + 1} base64大小:`, chunkBase64.length, 'bytes');
+        
+        // 上传分块
+        console.log(`发送 upload_chunk 请求...`);
+        const result = await callCloudFunction({
+            action: 'upload_chunk',
+            chunkIndex: chunkIndex,
+            totalChunks: totalChunks,
+            fileName: fileData.file.name,  // 确保使用原始文件名
+            fingerprint: fileData.fingerprint,
+            data: chunkBase64,
+            fileSize: fileSize
+        }, signal);
+        
+        console.log(`分块 ${chunkIndex + 1} 上传结果:`, result);
+        
+        if (!result.success) {
+            throw new Error(`分块上传失败: ${result.message}`);
+        }
+        
+        fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+        updateFileList();
+    }
+    
+    // 完成上传
+    console.log('所有分块上传完成，发送 complete_upload...');
+    const completeResult = await callCloudFunction({
+        action: 'complete_upload',
+        fileName: fileData.file.name,  // 使用原始文件名
+        fingerprint: fileData.fingerprint,
+        totalChunks: totalChunks,
+        fileSize: fileSize
+    }, signal);
+    
+    if (!completeResult.success) {
+        throw new Error('文件合并失败: ' + completeResult.message);
+    }
+    
+    console.log('文件上传完成:', completeResult);
+    return completeResult;
+}
 
         // ==================== 工具函数 ====================
         async function generateFileFingerprint(file) {
@@ -653,17 +660,24 @@
             });
         }
 
-        function readChunkAsBase64(chunk) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64Data = reader.result.split(',')[1];
-                    resolve(base64Data);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(chunk);
-            });
-        }
+       function readChunkAsBase64(chunk) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            // 获取完整的DataURL
+            const dataURL = reader.result;
+            console.log('原始DataURL大小:', dataURL.length, 'bytes');
+            
+            // 提取纯base64部分（移除 data:image/jpeg;base64, 前缀）
+            const base64Data = dataURL.split(',')[1];
+            console.log('提取的base64大小:', base64Data ? base64Data.length : 0, 'bytes');
+            
+            resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(chunk);
+    });
+}
 
         async function callCloudFunction(data, signal) {
             console.log('调用云函数，动作:', data.action);
@@ -780,4 +794,5 @@
     </script>
 </body>
 </html>
+
 
