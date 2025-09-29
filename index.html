@@ -1,3 +1,4 @@
+下面是html代码，帮我修改照片大小没有限制，分块设定你计算一下多少会不超过1M的限制
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -280,7 +281,7 @@
         <div class="upload-area" id="upload-area">
             <div class="upload-icon">📁</div>
             <p>点击选择照片</p>
-            <div class="format-list">无照片大小和数量限制</div>
+            <div class="format-list">最多9张照片，支持所有格式</div>
             <input type="file" id="file-input" accept="image/*" multiple>
         </div>
         
@@ -313,7 +314,7 @@
         </div>
         
         <div class="version-info">
-            版本: <span id="version-display">3.0.20240928.1</span>
+            版本: <span id="version-display">2.0.20240927.1</span>
         </div>
     </div>
 
@@ -321,11 +322,11 @@
     <script>
         // ==================== 配置信息 ====================
         const CONFIG = {
-            CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
-            MAX_FILES: 999, // 移除数量限制，设置一个很大的值
-            CHUNK_SIZE: 500 * 1024, // 500KB - 确保不会超过1MB限制
-            MAX_RETRIES: 3,
-            MAX_FILE_SIZE: 100 * 1024 * 1024 * 1024 // 100GB - 基本上无限制
+             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
+    MAX_FILES: 9,
+    CHUNK_SIZE: 50 * 1024, // 50KB - 确保不会超过限制
+    MAX_RETRIES: 3,
+    MAX_FILE_SIZE: 2 * 1024 * 1024 // 2MB最大文件大小（测试用）
         };
 
         // ==================== 状态管理 ====================
@@ -380,7 +381,7 @@
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
             
-            return `3.0.${year}${month}${day}${hours}${minutes}`;
+            return `2.0.${year}${month}${day}${hours}${minutes}`;
         }
 
         function setupMobileOptimizations() {
@@ -429,11 +430,17 @@
             
             if (files.length === 0) return;
             
-            // 移除文件数量限制检查
+            if (selectedFiles.length + files.length > CONFIG.MAX_FILES) {
+                alert(`最多只能选择${CONFIG.MAX_FILES}张照片`);
+                return;
+            }
             
             let validFilesAdded = 0;
             files.forEach(file => {
-                // 移除文件大小限制检查
+                if (file.size > CONFIG.MAX_FILE_SIZE) {
+                    alert(`文件 ${file.name} 超过 ${CONFIG.MAX_FILE_SIZE / 1024 / 1024}MB 限制，已跳过`);
+                    return;
+                }
                 
                 const existingFile = selectedFiles.find(f => 
                     f.file.name === file.name && f.file.size === file.size
@@ -446,12 +453,10 @@
                         progress: 0,
                         fingerprint: null,
                         fileId: null,
-                        error: null,
-                        totalChunks: 0,
-                        uploadedChunks: 0
+                        error: null
                     });
                     validFilesAdded++;
-                    console.log('添加文件:', file.name, '大小:', formatFileSize(file.size));
+                    console.log('添加文件:', file.name);
                 }
             });
             
@@ -478,15 +483,11 @@
                 const errorInfo = fileData.error ? 
                     `<div class="chunk-info" style="color: #dc3545;">错误: ${fileData.error}</div>` : '';
                 
-                const chunkInfo = fileData.totalChunks > 0 ? 
-                    `<div class="chunk-info">分块: ${fileData.uploadedChunks}/${fileData.totalChunks}</div>` : '';
-                
                 return `
                 <div class="file-item">
                     <div class="file-info">
                         <div class="file-name" title="${fileData.file.name}">${fileData.file.name}</div>
                         <div class="file-size">${formatFileSize(fileData.file.size)}</div>
-                        ${chunkInfo}
                         ${errorInfo}
                         <div class="progress-container">
                             <div class="progress-bar">
@@ -591,23 +592,16 @@
         }
 
         async function uploadFile(fileData, signal) {
-            console.log('上传文件:', fileData.file.name, '大小:', formatFileSize(fileData.file.size));
+            console.log('上传文件:', fileData.file.name, '大小:', fileData.file.size);
             
             const fileSize = fileData.file.size;
             const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
-            fileData.totalChunks = totalChunks;
-            fileData.uploadedChunks = 0;
-            
-            console.log(`文件需要分块: ${totalChunks} 块, 每块 ${formatFileSize(CONFIG.CHUNK_SIZE)}`);
             
             // 生成文件指纹
             if (!fileData.fingerprint) {
                 fileData.fingerprint = await generateFileFingerprint(fileData.file);
                 console.log('文件指纹生成完成:', fileData.fingerprint);
             }
-            
-            // 读取整个文件为base64（用于complete_upload的fileData参数）
-            const completeFileBase64 = await readFileAsBase64(fileData.file);
             
             // 上传所有分块
             for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
@@ -619,7 +613,7 @@
                 const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
                 const chunk = fileData.file.slice(start, end);
                 
-                console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${formatFileSize(chunk.size)}`);
+                console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
                 
                 const chunkBase64 = await readChunkAsBase64(chunk);
                 
@@ -638,20 +632,18 @@
                     throw new Error(`分块上传失败: ${result.message}`);
                 }
                 
-                fileData.uploadedChunks = chunkIndex + 1;
                 fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
                 updateFileList();
             }
             
-            // 完成上传 - 关键修复：发送fileData参数
+            // 完成上传
             console.log('所有分块上传完成，开始合并文件...');
             const completeResult = await callCloudFunction({
                 action: 'complete_upload',
                 fileName: fileData.file.name,
                 fingerprint: fileData.fingerprint,
-                fileSize: fileSize,
-                fileData: completeFileBase64, // 关键：发送完整的文件数据
-                totalChunks: totalChunks
+                totalChunks: totalChunks,
+                fileSize: fileSize
             }, signal);
             
             if (!completeResult.success) {
@@ -697,28 +689,27 @@
             });
         }
 
-        // 新增：读取整个文件为base64
-        function readFileAsBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    resolve(reader.result);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
-
         async function callCloudFunction(data, signal) {
             console.log('调用云函数，动作:', data.action);
             
             try {
+                const safeData = {
+                    action: data.action || 'unknown',
+                    chunkIndex: data.chunkIndex || 0,
+                    totalChunks: data.totalChunks || 1,
+                    fileName: data.fileName || 'unknown',
+                    fingerprint: data.fingerprint || 'unknown',
+                    data: data.data || '',
+                    fileSize: data.fileSize || 0,
+                    timestamp: Date.now()
+                };
+
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(data),
+                    body: JSON.stringify(safeData),
                     signal: signal
                 });
                 
@@ -751,6 +742,7 @@
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'GET',
                     headers: { 'Content-Type': 'application/json' }
+                   
                 });
                 
                 if (response.ok) {
