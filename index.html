@@ -629,8 +629,7 @@
                 updateFileList();
             }
             
-            // 关键修复：读取完整文件并发送fileData参数
-            const completeFileBase64 = await readFileAsBase64(fileData.file);
+           
             
             // 完成上传 - 发送fileData参数
             console.log('所有分块上传完成，开始合并文件...');
@@ -686,18 +685,7 @@
             });
         }
 
-        // 添加读取完整文件的函数
-        function readFileAsBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    resolve(reader.result);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
-
+      
         async function callCloudFunction(data, signal) {
             console.log('调用云函数，动作:', data.action);
             
@@ -825,6 +813,7 @@
     </script>
 </body>
 </html>
+
 
 
 
