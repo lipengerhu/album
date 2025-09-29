@@ -639,8 +639,7 @@
                 fingerprint: fileData.fingerprint,
                 totalChunks: totalChunks,
                 fileSize: fileSize,
-                fileData: completeFileBase64 // 关键：发送fileData参数
-            }, signal);
+                }, signal);
             
             if (!completeResult.success) {
                 throw new Error('文件合并失败: ' + completeResult.message);
@@ -813,6 +812,7 @@
     </script>
 </body>
 </html>
+
 
 
 
