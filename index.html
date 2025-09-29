@@ -313,7 +313,7 @@
         </div>
         
         <div class="version-info">
-            版本: <span id="version-display">3.0.20240928.1</span>
+            版本: <span id="version-display">4.0.20240929.1</span>
         </div>
     </div>
 
@@ -322,10 +322,9 @@
         // ==================== 配置信息 ====================
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
-            MAX_FILES: 999, // 解除9张限制
-            CHUNK_SIZE: 50 * 1024, // 300KB分块
+            MAX_FILES: 999,
+            CHUNK_SIZE: 700 * 1024,
             MAX_RETRIES: 3
-            // 移除MAX_FILE_SIZE限制
         };
 
         // ==================== 状态管理 ====================
@@ -356,17 +355,11 @@
         function init() {
             console.log('初始化照片上传应用...');
             
-            // 设置版本号
             const version = generateVersion();
             elements.versionDisplay.textContent = version;
             
-            // 初始化事件监听
             initEventListeners();
-            
-            // 检查服务状态
             checkServiceStatus();
-            
-            // 移动端优化
             setupMobileOptimizations();
             
             console.log('应用初始化完成');
@@ -380,7 +373,7 @@
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
             
-            return `3.0.${year}${month}${day}${hours}${minutes}`;
+            return `4.0.${year}${month}${day}${hours}${minutes}`;
         }
 
         function setupMobileOptimizations() {
@@ -395,27 +388,21 @@
         }
 
         function initEventListeners() {
-            console.log('初始化事件监听器...');
-            
             elements.uploadArea.addEventListener('click', function() {
-                console.log('点击上传区域');
                 elements.fileInput.click();
             });
 
             elements.fileInput.addEventListener('change', function(e) {
-                console.log('文件选择发生变化');
                 handleFileSelect(e);
             });
 
             elements.startUpload.addEventListener('click', function() {
-                console.log('点击开始上传按钮');
                 if (!elements.startUpload.disabled && !uploadInProgress) {
                     startUpload();
                 }
             });
 
             elements.clearFiles.addEventListener('click', function() {
-                console.log('点击清空按钮');
                 clearFiles();
             });
 
@@ -429,12 +416,8 @@
             
             if (files.length === 0) return;
             
-            // 移除文件数量限制检查
-            
             let validFilesAdded = 0;
             files.forEach(file => {
-                // 移除文件大小限制检查
-                
                 const existingFile = selectedFiles.find(f => 
                     f.file.name === file.name && f.file.size === file.size
                 );
@@ -629,17 +612,15 @@
                 updateFileList();
             }
             
-           
-            
-            // 完成上传 - 发送fileData参数
+            // 完成上传 - 绝对没有fileData参数
             console.log('所有分块上传完成，开始合并文件...');
             const completeResult = await callCloudFunction({
                 action: 'complete_upload',
                 fileName: fileData.file.name,
                 fingerprint: fileData.fingerprint,
                 totalChunks: totalChunks,
-                fileSize: fileSize,
-                }, signal);
+                fileSize: fileSize
+            }, signal);
             
             if (!completeResult.success) {
                 throw new Error('文件合并失败: ' + completeResult.message);
@@ -684,61 +665,42 @@
             });
         }
 
-      
         async function callCloudFunction(data, signal) {
-    console.log('调用云函数，动作:', data.action);
-    console.log('发送的数据:', {
-        action: data.action,
-        fileName: data.fileName,
-        fileSize: data.fileSize,
-        fingerprint: data.fingerprint,
-        totalChunks: data.totalChunks
-    });
-    
-    try {
-        const safeData = {
-            action: data.action || 'unknown',
-            chunkIndex: data.chunkIndex || 0,
-            totalChunks: data.totalChunks || 1,
-            fileName: data.fileName || 'unknown',
-            fingerprint: data.fingerprint || 'unknown',
-            data: data.data || '',
-            fileSize: data.fileSize || 0,
-            timestamp: Date.now()
-        };
-
-        const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(safeData),
-            signal: signal
-        });
-        
-        console.log('云函数响应状态:', response.status);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status} ${response.statusText}`);
+            console.log('调用云函数，动作:', data.action);
+            
+            try {
+                const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data),
+                    signal: signal
+                });
+                
+                console.log('云函数响应状态:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('云函数响应成功:', result);
+                return result;
+                
+            } catch (error) {
+                console.error('云函数调用失败:', error);
+                
+                if (error.name === 'AbortError') {
+                    throw error;
+                }
+                
+                return {
+                    success: false,
+                    message: '网络请求失败: ' + error.message
+                };
+            }
         }
-        
-        const result = await response.json();
-        console.log('云函数响应成功:', result);
-        return result;
-        
-    } catch (error) {
-        console.error('云函数调用失败:', error);
-        
-        if (error.name === 'AbortError') {
-            throw error;
-        }
-        
-        return {
-            success: false,
-            message: '网络请求失败: ' + error.message
-        };
-    }
-}
 
         async function checkServiceStatus() {
             try {
@@ -746,9 +708,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                action: 'health_check'
-            })
-                   
+                        action: 'health_check'
+                    })
                 });
                 
                 if (response.ok) {
@@ -819,14 +780,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
