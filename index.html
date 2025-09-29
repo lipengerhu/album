@@ -280,7 +280,7 @@
         <div class="upload-area" id="upload-area">
             <div class="upload-icon">📁</div>
             <p>点击选择照片</p>
-            <div class="format-list">最多9张照片，支持所有格式</div>
+            <div class="format-list">无照片数量和大小限制</div>
             <input type="file" id="file-input" accept="image/*" multiple>
         </div>
         
@@ -313,7 +313,7 @@
         </div>
         
         <div class="version-info">
-            版本: <span id="version-display">2.0.20240927.1</span>
+            版本: <span id="version-display">3.0.20240928.1</span>
         </div>
     </div>
 
@@ -321,11 +321,11 @@
     <script>
         // ==================== 配置信息 ====================
         const CONFIG = {
-             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
-    MAX_FILES: 9,
-    CHUNK_SIZE: 50 * 1024, // 50KB - 确保不会超过限制
-    MAX_RETRIES: 3,
-    MAX_FILE_SIZE: 2 * 1024 * 1024 // 2MB最大文件大小（测试用）
+            CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
+            MAX_FILES: 999, // 解除9张限制
+            CHUNK_SIZE: 300 * 1024, // 300KB分块
+            MAX_RETRIES: 3
+            // 移除MAX_FILE_SIZE限制
         };
 
         // ==================== 状态管理 ====================
@@ -380,7 +380,7 @@
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
             
-            return `2.0.${year}${month}${day}${hours}${minutes}`;
+            return `3.0.${year}${month}${day}${hours}${minutes}`;
         }
 
         function setupMobileOptimizations() {
@@ -429,17 +429,11 @@
             
             if (files.length === 0) return;
             
-            if (selectedFiles.length + files.length > CONFIG.MAX_FILES) {
-                alert(`最多只能选择${CONFIG.MAX_FILES}张照片`);
-                return;
-            }
+            // 移除文件数量限制检查
             
             let validFilesAdded = 0;
             files.forEach(file => {
-                if (file.size > CONFIG.MAX_FILE_SIZE) {
-                    alert(`文件 ${file.name} 超过 ${CONFIG.MAX_FILE_SIZE / 1024 / 1024}MB 限制，已跳过`);
-                    return;
-                }
+                // 移除文件大小限制检查
                 
                 const existingFile = selectedFiles.find(f => 
                     f.file.name === file.name && f.file.size === file.size
@@ -635,14 +629,18 @@
                 updateFileList();
             }
             
-            // 完成上传
+            // 关键修复：读取完整文件并发送fileData参数
+            const completeFileBase64 = await readFileAsBase64(fileData.file);
+            
+            // 完成上传 - 发送fileData参数
             console.log('所有分块上传完成，开始合并文件...');
             const completeResult = await callCloudFunction({
                 action: 'complete_upload',
                 fileName: fileData.file.name,
                 fingerprint: fileData.fingerprint,
                 totalChunks: totalChunks,
-                fileSize: fileSize
+                fileSize: fileSize,
+                fileData: completeFileBase64 // 关键：发送fileData参数
             }, signal);
             
             if (!completeResult.success) {
@@ -685,6 +683,18 @@
                 };
                 reader.onerror = reject;
                 reader.readAsDataURL(chunk);
+            });
+        }
+
+        // 添加读取完整文件的函数
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    resolve(reader.result);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
             });
         }
 
@@ -812,4 +822,3 @@
     </script>
 </body>
 </html>
-
