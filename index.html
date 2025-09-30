@@ -128,7 +128,6 @@
             font-size: 11px; 
             padding: 2px 6px; 
             border-radius: 8px; 
-            margin-left: 8px;
             white-space: nowrap;
         }
         .status-pending { background: #fff3cd; color: #856404; }
@@ -285,12 +284,40 @@
         .gps-error {
             color: #dc3545;
         }
+
+        /* 文件操作区域 */
+        .file-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 8px;
+        }
+
+        /* 取消按钮样式 */
+        .cancel-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 12px;
+            transition: background-color 0.2s;
+            color: #dc3545;
+        }
+
+        .cancel-btn:hover {
+            background: rgba(220, 53, 69, 0.1);
+        }
+
+        .cancel-btn:active {
+            background: rgba(220, 53, 69, 0.2);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📸 上传照片</h1>
-               
+            
         <div class="service-status" id="service-status">
             🔄 检查服务状态...
         </div>
@@ -298,7 +325,7 @@
         <div class="upload-area" id="upload-area">
             <div class="upload-icon">📁</div>
             <p>点击选择照片</p>
-            <div class="format-list">无数量和大小限制</div>
+            <div class="format-list">无数量的大小限制</div>
             <input type="file" id="file-input" accept="image/*" multiple>
         </div>
         
@@ -341,7 +368,7 @@
         // ==================== 配置信息 ====================
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
-            TENCENT_MAP_KEY: '你的TENCENT_MAP_KEY', // 请替换为你的腾讯地图KEY
+            TENCENT_MAP_KEY: '7PVBZ-35X6Q-ZD45U-4JKKI-WYXP5-6ABEQ',
             MAX_FILES: 999,
             CHUNK_SIZE: 50 * 1024,
             MAX_RETRIES: 3
@@ -582,17 +609,21 @@
                 const errorInfo = fileData.error ? 
                     `<div class="chunk-info" style="color: #dc3545;">错误: ${fileData.error}</div>` : '';
                 
-                // GPS信息显示
+                // GPS信息显示 - 移除"位置解析中"文字
                 let gpsInfo = '';
                 if (fileData.gpsInfo) {
                     if (fileData.gpsInfo.hasGPS) {
-                        const address = fileData.gpsInfo.address || '位置解析中...';
+                        const address = fileData.gpsInfo.address || '📍 定位中...';
                         const addressClass = fileData.gpsInfo.address ? 'gps-success' : 'gps-loading';
-                        gpsInfo = `<div class="gps-info ${addressClass}">📍 ${address}</div>`;
+                        gpsInfo = `<div class="gps-info ${addressClass}">${address}</div>`;
                     } else {
-                        gpsInfo = '<div class="gps-info gps-error">📍 无GPS信息</div>';
+                        gpsInfo = '<div class="gps-info gps-error">📍 无定位</div>';
                     }
                 }
+                
+                // 添加上传中的取消按钮
+                const cancelButton = fileData.status === 'uploading' ? 
+                    `<button class="cancel-btn" data-filename="${fileData.file.name}" title="取消上传">❌</button>` : '';
                 
                 return `
                 <div class="file-item">
@@ -608,12 +639,44 @@
                             <div class="progress-text">${fileData.progress}%</div>
                         </div>
                     </div>
-                    <div class="file-status status-${fileData.status}">
-                        ${getStatusText(fileData.status)}
+                    <div class="file-actions">
+                        <div class="file-status status-${fileData.status}">
+                            ${getStatusText(fileData.status)}
+                        </div>
+                        ${cancelButton}
                     </div>
                 </div>
                 `;
             }).join('');
+            
+            // 添加取消按钮的事件监听
+            attachCancelButtonListeners();
+        }
+
+        // 添加取消按钮事件监听
+        function attachCancelButtonListeners() {
+            document.querySelectorAll('.cancel-btn').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    const fileName = this.getAttribute('data-filename');
+                    cancelFileUpload(fileName);
+                });
+            });
+        }
+
+        // 取消文件上传
+        function cancelFileUpload(fileName) {
+            const fileData = selectedFiles.find(f => f.file.name === fileName);
+            if (fileData && fileData.status === 'uploading') {
+                // 取消上传
+                if (uploadController) {
+                    uploadController.abort();
+                }
+                fileData.status = 'error';
+                fileData.error = '上传已取消';
+                updateFileList();
+                updateUploadButton();
+                console.log('已取消文件上传:', fileName);
+            }
         }
 
         function formatFileSize(bytes) {
@@ -818,7 +881,7 @@
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Referer': 'https://album-70p.pages.dev' // 添加Referer头
+                        'Referer': 'https://album-70p.pages.dev'
                     },
                     body: JSON.stringify(data),
                     signal: signal
@@ -854,7 +917,7 @@
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Referer': 'https://album-70p.pages.dev' // 添加Referer头
+                        'Referer': 'https://album-70p.pages.dev'
                     },
                     body: JSON.stringify({
                         action: 'health_check'
@@ -929,4 +992,3 @@
     </script>
 </body>
 </html>
-
