@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { 
             margin: 0; 
@@ -349,7 +348,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         // 配置信息
         const CONFIG = {
@@ -359,11 +357,12 @@
             MAX_RETRIES: 3
         };
 
-        // GPS解析服务
+        // GPS解析服务 - 改进版本
         class GPSLocationService {
             constructor() {
                 this.cache = new Map();
-                this.requestDelay = 1000; // 1秒延迟避免频繁请求
+                this.requestTimeout = 5000; // 5秒超时
+                this.useBackupService = false;
             }
             
             // 解析GPS坐标获取省份和城市
@@ -375,13 +374,22 @@
                     return this.cache.get(cacheKey);
                 }
                 
+                // 如果之前已经切换到备用服务，直接使用备用方案
+                if (this.useBackupService) {
+                    return this.getBackupLocationInfo(latitude, longitude);
+                }
+                
                 try {
-                    // 添加延迟避免频繁请求
-                    await this.delay(this.requestDelay);
+                    // 使用AbortController设置超时
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeout);
                     
                     const response = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`,
+                        { signal: controller.signal }
                     );
+                    
+                    clearTimeout(timeoutId);
                     
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}`);
@@ -397,17 +405,17 @@
                         return locationInfo;
                     }
                     
-                    return this.getEmptyLocationInfo();
+                    return this.getBackupLocationInfo(latitude, longitude);
                     
                 } catch (error) {
-                    console.warn('GPS解析失败:', error);
-                    return this.getEmptyLocationInfo();
+                    console.warn('GPS解析失败，使用备用方案:', error);
+                    this.useBackupService = true; // 标记使用备用服务
+                    return this.getBackupLocationInfo(latitude, longitude);
                 }
             }
             
             // 从地址信息中提取省份和城市
             extractProvinceCity(address) {
-                // 中国地区的地址解析逻辑
                 let province = '';
                 let city = '';
                 
@@ -435,7 +443,46 @@
                 return {
                     province: province || '',
                     city: city || '',
-                    hasLocation: !!(province || city)
+                    hasLocation: !!(province || city),
+                    source: 'nominatim'
+                };
+            }
+            
+            // 备用方案 - 基于经纬度估算位置
+            getBackupLocationInfo(latitude, longitude) {
+                // 基于中国主要城市的经纬度范围进行简单估算
+                const locations = [
+                    { minLat: 39.4, maxLat: 41.0, minLng: 115.4, maxLng: 117.5, province: '北京', city: '北京' },
+                    { minLat: 30.7, maxLat: 31.8, minLng: 120.8, maxLng: 122.2, province: '上海', city: '上海' },
+                    { minLat: 22.2, maxLat: 23.9, minLng: 113.0, maxLng: 114.3, province: '广东', city: '广州' },
+                    { minLat: 22.2, maxLat: 23.9, minLng: 114.0, maxLng: 114.5, province: '广东', city: '深圳' },
+                    { minLat: 29.5, maxLat: 30.5, minLng: 106.2, maxLng: 107.0, province: '重庆', city: '重庆' },
+                    { minLat: 30.0, maxLat: 31.0, minLng: 120.0, maxLng: 121.0, province: '浙江', city: '杭州' },
+                    { minLat: 31.1, maxLat: 32.9, minLng: 118.4, maxLng: 119.5, province: '江苏', city: '南京' },
+                    { minLat: 36.0, maxLat: 37.5, minLng: 116.8, maxLng: 118.0, province: '山东', city: '济南' },
+                    { minLat: 38.5, maxLat: 40.5, minLng: 115.2, maxLng: 117.8, province: '河北', city: '石家庄' },
+                    { minLat: 30.5, maxLat: 31.5, minLng: 104.0, maxLng: 105.0, province: '四川', city: '成都' }
+                ];
+                
+                // 查找匹配的位置
+                for (const loc of locations) {
+                    if (latitude >= loc.minLat && latitude <= loc.maxLat &&
+                        longitude >= loc.minLng && longitude <= loc.maxLng) {
+                        return {
+                            province: loc.province,
+                            city: loc.city,
+                            hasLocation: true,
+                            source: 'backup_estimation'
+                        };
+                    }
+                }
+                
+                // 如果不在预设范围内，返回默认值
+                return {
+                    province: '',
+                    city: '',
+                    hasLocation: false,
+                    source: 'backup_default'
                 };
             }
             
@@ -443,18 +490,6 @@
             isMunicipality(province) {
                 const municipalities = ['北京', '上海', '天津', '重庆'];
                 return municipalities.includes(province);
-            }
-            
-            getEmptyLocationInfo() {
-                return {
-                    province: '',
-                    city: '',
-                    hasLocation: false
-                };
-            }
-            
-            delay(ms) {
-                return new Promise(resolve => setTimeout(resolve, ms));
             }
         }
 
@@ -574,7 +609,8 @@
                             province: '',
                             city: '',
                             latitude: null,
-                            longitude: null
+                            longitude: null,
+                            source: 'none'
                         };
                         
                         // 如果有GPS信息，进行解析
@@ -583,7 +619,7 @@
                             const latitude = 39.9 + (Math.random() - 0.5) * 10;
                             const longitude = 116.4 + (Math.random() - 0.5) * 10;
                             
-                            // 使用Leaflet服务解析位置
+                            // 使用GPS解析服务
                             locationInfo = await locationService.parseLocation(latitude, longitude);
                             locationInfo.hasGPS = true;
                             locationInfo.latitude = latitude;
@@ -608,7 +644,8 @@
                             latitude: null,
                             longitude: null,
                             originalTime: null,
-                            hasDateTime: false
+                            hasDateTime: false,
+                            source: 'error'
                         });
                     }
                 };
@@ -621,7 +658,8 @@
                         latitude: null,
                         longitude: null,
                         originalTime: null,
-                        hasDateTime: false
+                        hasDateTime: false,
+                        source: 'read_error'
                     });
                 };
                 
