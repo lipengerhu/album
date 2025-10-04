@@ -486,6 +486,11 @@
                     });
                     validFilesAdded++;
                     console.log('添加文件:', file.name, 'GPS信息:', gpsInfo);
+                    
+                    // 如果GPS信息有效，在后台解析地址
+                    if (gpsInfo.hasGPS) {
+                        parseAddressInBackground(file.name, gpsInfo.gpsLatitude, gpsInfo.gpsLongitude);
+                    }
                 }
             }
             
@@ -507,46 +512,27 @@
                         const gpsLatitudeRef = EXIF.getTag(this, "GPSLatitudeRef");
                         const gpsLongitudeRef = EXIF.getTag(this, "GPSLongitudeRef");
                         
-                        console.log('原始GPS数据:', {
-                            latitude: gpsLatitude,
-                            longitude: gpsLongitude,
-                            latRef: gpsLatitudeRef,
-                            lngRef: gpsLongitudeRef
-                        });
-                        
                         let finalLat = null;
                         let finalLng = null;
-                        let address = null;
                         
                         if (gpsLatitude && gpsLongitude) {
                             finalLat = gpsToDecimal(gpsLatitude, gpsLatitudeRef);
                             finalLng = gpsToDecimal(gpsLongitude, gpsLongitudeRef);
                             
-                            console.log('转换后的坐标:', { finalLat, finalLng });
-                            
-                            // 使用腾讯地图API获取地址
-                            getAddressFromTencentMap(finalLat, finalLng).then(addressInfo => {
-                                resolve({
-                                    gpsLatitude: finalLat,
-                                    gpsLongitude: finalLng,
-                                    address: addressInfo,
-                                    hasGPS: true
-                                });
-                            }).catch(error => {
-                                resolve({
-                                    gpsLatitude: finalLat,
-                                    gpsLongitude: finalLng,
-                                    address: null,
-                                    hasGPS: true,
-                                    addressError: error.message
-                                });
+                            resolve({
+                                gpsLatitude: finalLat,
+                                gpsLongitude: finalLng,
+                                address: null,
+                                hasGPS: true,
+                                status: 'parsing'
                             });
                         } else {
                             resolve({
                                 gpsLatitude: null,
                                 gpsLongitude: null,
                                 address: null,
-                                hasGPS: false
+                                hasGPS: false,
+                                status: 'no_gps'
                             });
                         }
                     } catch (error) {
@@ -556,7 +542,8 @@
                             gpsLongitude: null,
                             address: null,
                             hasGPS: false,
-                            error: error.message
+                            error: error.message,
+                            status: 'error'
                         });
                     }
                 });
@@ -575,29 +562,42 @@
             return parseFloat(decimal.toFixed(6));
         }
 
-        async function getAddressFromTencentMap(lat, lng) {
-            if (!lat || !lng) return null;
+        // 后台解析地址
+        async function parseAddressInBackground(fileName, lat, lng) {
+            console.log(`开始解析地址 [${fileName}], 坐标:`, { lat, lng });
             
             try {
                 const response = await fetch(
                     `https://apis.map.qq.com/ws/geocoder/v1/?location=${lat},${lng}&key=${CONFIG.TENCENT_MAP_KEY}&get_poi=0`
                 );
+                
                 const data = await response.json();
+                console.log('腾讯地图API返回:', data);
                 
                 if (data.status === 0) {
-                    return data.result.address;
+                    const address = data.result.address;
+                    // 更新文件数据中的地址信息
+                    const fileData = selectedFiles.find(f => f.file.name === fileName);
+                    if (fileData && fileData.gpsInfo) {
+                        fileData.gpsInfo.address = address;
+                        fileData.gpsInfo.status = 'success';
+                        updateFileList();
+                    }
                 } else {
-                    throw new Error(data.message || '地址解析失败');
+                    throw new Error(`腾讯地图API错误: ${data.message}`);
                 }
             } catch (error) {
-                console.error('腾讯地图API调用失败:', error);
-                throw error;
+                console.error('地址解析失败:', error);
+                const fileData = selectedFiles.find(f => f.file.name === fileName);
+                if (fileData && fileData.gpsInfo) {
+                    fileData.gpsInfo.status = 'failed';
+                    fileData.gpsInfo.error = error.message;
+                    updateFileList();
+                }
             }
         }
 
         function updateFileList() {
-            console.log('更新文件列表，文件数量:', selectedFiles.length);
-            
             if (selectedFiles.length === 0) {
                 elements.fileList.innerHTML = '<div class="empty-state">暂无文件，请选择照片</div>';
                 elements.emptyState.style.display = 'block';
@@ -610,15 +610,27 @@
                 const errorInfo = fileData.error ? 
                     `<div class="chunk-info" style="color: #dc3545;">错误: ${fileData.error}</div>` : '';
                 
-                // GPS信息显示 - 移除"位置解析中"文字
+                // GPS信息显示
                 let gpsInfo = '';
                 if (fileData.gpsInfo) {
                     if (fileData.gpsInfo.hasGPS) {
-                        const address = fileData.gpsInfo.address || '📍 定位中...';
-                        const addressClass = fileData.gpsInfo.address ? 'gps-success' : 'gps-loading';
-                        gpsInfo = `<div class="gps-info ${addressClass}">${address}</div>`;
+                        let displayText = '';
+                        let statusClass = '';
+                        
+                        if (fileData.gpsInfo.status === 'parsing') {
+                            displayText = '📍 解析地址中...';
+                            statusClass = 'gps-loading';
+                        } else if (fileData.gpsInfo.status === 'success') {
+                            displayText = `📍 ${fileData.gpsInfo.address}`;
+                            statusClass = 'gps-success';
+                        } else {
+                            displayText = '📍 地址解析失败';
+                            statusClass = 'gps-error';
+                        }
+                        
+                        gpsInfo = `<div class="gps-info ${statusClass}">${displayText}</div>`;
                     } else {
-                        gpsInfo = '<div class="gps-info gps-error">📍 无定位</div>';
+                        gpsInfo = '<div class="gps-info gps-error">📍 无定位信息</div>';
                     }
                 }
                 
@@ -668,7 +680,6 @@
         function cancelFileUpload(fileName) {
             const fileData = selectedFiles.find(f => f.file.name === fileName);
             if (fileData && fileData.status === 'uploading') {
-                // 取消上传
                 if (uploadController) {
                     uploadController.abort();
                 }
@@ -676,7 +687,6 @@
                 fileData.error = '上传已取消';
                 updateFileList();
                 updateUploadButton();
-                console.log('已取消文件上传:', fileName);
             }
         }
 
@@ -711,8 +721,6 @@
 
         // ==================== 上传功能 ====================
         async function startUpload() {
-            console.log('开始上传流程...');
-            
             if (uploadInProgress) return;
             
             const pendingFiles = selectedFiles.filter(f => f.status === 'pending' || f.status === 'error');
@@ -768,21 +776,13 @@
         }
 
         async function uploadFile(fileData, signal) {
-            console.log('上传文件:', fileData.file.name, '大小:', fileData.file.size);
-            
             const fileSize = fileData.file.size;
             const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
-            console.log('计算的总块数:', totalChunks, '分块大小:', CONFIG.CHUNK_SIZE);
             
-            // 生成文件指纹
             if (!fileData.fingerprint) {
                 fileData.fingerprint = await generateFileFingerprint(fileData.file);
-                console.log('文件指纹生成完成:', fileData.fingerprint);
             }
             
-            console.log('开始上传分块...');
-            
-            // 上传所有分块
             for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
                 if (signal.aborted) {
                     throw new DOMException('上传已取消', 'AbortError');
@@ -792,11 +792,8 @@
                 const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
                 const chunk = fileData.file.slice(start, end);
                 
-                console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
-                
                 const chunkBase64 = await readChunkAsBase64(chunk);
                 
-                // 上传分块 - 包含GPS信息
                 const result = await callCloudFunction({
                     action: 'upload_chunk',
                     chunkIndex: chunkIndex,
@@ -805,7 +802,6 @@
                     fingerprint: fileData.fingerprint,
                     data: chunkBase64,
                     fileSize: fileSize,
-                    // 包含GPS信息
                     gpsLatitude: fileData.gpsInfo?.gpsLatitude || null,
                     gpsLongitude: fileData.gpsInfo?.gpsLongitude || null
                 }, signal);
@@ -818,14 +814,12 @@
                 updateFileList();
             }
             
-            // 完成上传 - 包含GPS信息
             const completeResult = await callCloudFunction({
                 action: 'complete_upload',
                 fileName: fileData.file.name,
                 fingerprint: fileData.fingerprint,
                 totalChunks: totalChunks,
                 fileSize: fileSize,
-                // 包含GPS信息
                 gpsLatitude: fileData.gpsInfo?.gpsLatitude || null,
                 gpsLongitude: fileData.gpsInfo?.gpsLongitude || null
             }, signal);
@@ -834,7 +828,6 @@
                 throw new Error('文件合并失败: ' + completeResult.message);
             }
             
-            console.log('文件上传完成:', completeResult);
             return completeResult;
         }
 
@@ -847,13 +840,11 @@
                 reader.onload = (e) => {
                     spark.append(e.target.result);
                     const hash = spark.end();
-                    console.log('文件指纹生成成功:', hash);
                     resolve(hash);
                 };
                 
                 reader.onerror = () => {
                     const backupHash = 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                    console.log('文件指纹生成失败，使用备用指纹:', backupHash);
                     resolve(backupHash);
                 };
                 
@@ -875,8 +866,6 @@
         }
 
         async function callCloudFunction(data, signal) {
-            console.log('调用云函数，动作:', data.action);
-            
             try {
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
@@ -888,19 +877,14 @@
                     signal: signal
                 });
                 
-                console.log('云函数响应状态:', response.status);
-                
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status} ${response.statusText}`);
                 }
                 
                 const result = await response.json();
-                console.log('云函数响应成功:', result);
                 return result;
                 
             } catch (error) {
-                console.error('云函数调用失败:', error);
-                
                 if (error.name === 'AbortError') {
                     throw error;
                 }
@@ -960,7 +944,6 @@
                 </div>
             `;
             elements.resultInfo.style.display = 'block';
-            elements.resultInfo.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function calculateTotalSize() {
