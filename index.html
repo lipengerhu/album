@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
     <style>
-        /* 样式保持不变 */
         * { 
             margin: 0; 
             padding: 0; 
@@ -302,7 +301,7 @@
     <div class="container">
         <div class="header">
             <h1>照片上传</h1>
-            <p class="subtitle">自动提取照片信息</p>
+            <p class="subtitle">自动提取地址信息和拍摄时间</p>
         </div>
         
         <div class="service-status" id="service-status">
@@ -322,8 +321,8 @@
                 <div class="stat-label">总文件</div>
             </div>
             <div class="stat-item">
-                <div class="stat-value" id="with-gps">0</div>
-                <div class="stat-label">含位置信息</div>
+                <div class="stat-value" id="with-address">0</div>
+                <div class="stat-label">含地址信息</div>
             </div>
             <div class="stat-item">
                 <div class="stat-value" id="total-size">0MB</div>
@@ -358,224 +357,10 @@
             MAX_RETRIES: 3
         };
 
-        // GPS解析服务 - 修复版本
-        class GPSLocationService {
-            constructor() {
-                this.cache = new Map();
-                this.requestTimeout = 8000; // 增加到8秒超时
-            }
-            
-            // 解析GPS坐标获取省份和城市
-            async parseLocation(latitude, longitude) {
-                const cacheKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
-                
-                // 检查缓存
-                if (this.cache.has(cacheKey)) {
-                    return this.cache.get(cacheKey);
-                }
-                
-                try {
-                    console.log('开始解析GPS位置:', latitude, longitude);
-                    
-                    // 使用Promise.race实现超时控制
-                    const fetchPromise = fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
-                    );
-                    
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('请求超时')), this.requestTimeout)
-                    );
-                    
-                    const response = await Promise.race([fetchPromise, timeoutPromise]);
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data && data.address) {
-                        const locationInfo = this.extractProvinceCity(data.address);
-                        console.log('GPS解析成功:', locationInfo);
-                        
-                        // 缓存结果
-                        this.cache.set(cacheKey, locationInfo);
-                        return locationInfo;
-                    }
-                    
-                    console.log('GPS解析返回空数据，使用备用方案');
-                    return this.getBackupLocationInfo(latitude, longitude);
-                    
-                } catch (error) {
-                    console.warn('GPS解析失败，使用备用方案:', error.message);
-                    return this.getBackupLocationInfo(latitude, longitude);
-                }
-            }
-            
-            // 从地址信息中提取省份和城市
-            extractProvinceCity(address) {
-                let province = '';
-                let city = '';
-                
-                // 优先从state字段获取省份
-                if (address.state) {
-                    province = address.state.replace('省', '').replace('自治区', '').replace('市', '');
-                } else if (address.province) {
-                    province = address.province.replace('省', '').replace('自治区', '').replace('市', '');
-                }
-                
-                // 获取城市信息
-                if (address.city) {
-                    city = address.city.replace('市', '');
-                } else if (address.town) {
-                    city = address.town;
-                } else if (address.county) {
-                    city = address.county.replace('县', '').replace('区', '');
-                }
-                
-                // 处理直辖市情况
-                if (this.isMunicipality(province)) {
-                    city = province;
-                }
-                
-                return {
-                    province: province || '',
-                    city: city || '',
-                    hasLocation: !!(province || city),
-                    source: 'nominatim'
-                };
-            }
-            
-            // 改进的备用方案 - 基于中国主要城市坐标进行距离计算
-            getBackupLocationInfo(latitude, longitude) {
-                // 中国主要城市坐标
-                const majorCities = [
-                    { name: '北京', province: '北京', city: '北京', lat: 39.9042, lng: 116.4074 },
-                    { name: '上海', province: '上海', city: '上海', lat: 31.2304, lng: 121.4737 },
-                    { name: '广州', province: '广东', city: '广州', lat: 23.1291, lng: 113.2644 },
-                    { name: '深圳', province: '广东', city: '深圳', lat: 22.5431, lng: 114.0579 },
-                    { name: '杭州', province: '浙江', city: '杭州', lat: 30.2741, lng: 120.1551 },
-                    { name: '南京', province: '江苏', city: '南京', lat: 32.0603, lng: 118.7969 },
-                    { name: '武汉', province: '湖北', city: '武汉', lat: 30.5928, lng: 114.3055 },
-                    { name: '成都', province: '四川', city: '成都', lat: 30.5728, lng: 104.0668 },
-                    { name: '西安', province: '陕西', city: '西安', lat: 34.3416, lng: 108.9398 },
-                    { name: '重庆', province: '重庆', city: '重庆', lat: 29.5630, lng: 106.5516 },
-                    { name: '天津', province: '天津', city: '天津', lat: 39.3434, lng: 117.3616 },
-                    { name: '苏州', province: '江苏', city: '苏州', lat: 31.2989, lng: 120.5853 },
-                    { name: '郑州', province: '河南', city: '郑州', lat: 34.7466, lng: 113.6253 },
-                    { name: '长沙', province: '湖南', city: '长沙', lat: 28.2282, lng: 112.9388 },
-                    { name: '沈阳', province: '辽宁', city: '沈阳', lat: 41.8057, lng: 123.4315 },
-                    { name: '青岛', province: '山东', city: '青岛', lat: 36.0671, lng: 120.3826 },
-                    { name: '大连', province: '辽宁', city: '大连', lat: 38.9140, lng: 121.6147 },
-                    { name: '厦门', province: '福建', city: '厦门', lat: 24.4798, lng: 118.0894 },
-                    { name: '昆明', province: '云南', city: '昆明', lat: 25.0438, lng: 102.7046 },
-                    { name: '哈尔滨', province: '黑龙江', city: '哈尔滨', lat: 45.8038, lng: 126.5349 }
-                ];
-                
-                // 计算到每个城市的距离
-                let closestCity = null;
-                let minDistance = Infinity;
-                
-                for (const city of majorCities) {
-                    const distance = this.calculateDistance(latitude, longitude, city.lat, city.lng);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCity = city;
-                    }
-                }
-                
-                // 如果距离最近的主要城市在300公里内，使用该城市信息
-                if (closestCity && minDistance < 300) {
-                    return {
-                        province: closestCity.province,
-                        city: closestCity.city,
-                        hasLocation: true,
-                        source: 'backup_calculation',
-                        distance: minDistance
-                    };
-                }
-                
-                // 如果不在主要城市附近，根据经纬度大致判断省份
-                const provinceInfo = this.estimateProvince(latitude, longitude);
-                return {
-                    province: provinceInfo.province,
-                    city: '',
-                    hasLocation: !!provinceInfo.province,
-                    source: 'backup_estimation'
-                };
-            }
-            
-            // 计算两个坐标点之间的距离（公里）
-            calculateDistance(lat1, lng1, lat2, lng2) {
-                const R = 6371; // 地球半径（公里）
-                const dLat = (lat2 - lat1) * Math.PI / 180;
-                const dLng = (lng2 - lng1) * Math.PI / 180;
-                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                         Math.sin(dLng/2) * Math.sin(dLng/2);
-                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                return R * c;
-            }
-            
-            // 根据经纬度大致估算省份
-            estimateProvince(latitude, longitude) {
-                // 中国各省份的大致经纬度范围
-                const provinces = [
-                    { name: '北京', minLat: 39.4, maxLat: 41.1, minLng: 115.4, maxLng: 117.5 },
-                    { name: '天津', minLat: 38.5, maxLat: 40.3, minLng: 116.7, maxLng: 118.2 },
-                    { name: '河北', minLat: 36.0, maxLat: 42.7, minLng: 113.5, maxLng: 119.9 },
-                    { name: '山西', minLat: 34.5, maxLat: 40.9, minLng: 110.2, maxLng: 114.6 },
-                    { name: '内蒙古', minLat: 37.2, maxLat: 53.5, minLng: 97.2, maxLng: 126.0 },
-                    { name: '辽宁', minLat: 38.7, maxLat: 43.5, minLng: 118.8, maxLng: 125.8 },
-                    { name: '吉林', minLat: 40.9, maxLat: 46.3, minLng: 121.6, maxLng: 131.3 },
-                    { name: '黑龙江', minLat: 43.4, maxLat: 53.6, minLng: 121.1, maxLng: 135.1 },
-                    { name: '上海', minLat: 30.7, maxLat: 31.9, minLng: 120.8, maxLng: 122.2 },
-                    { name: '江苏', minLat: 30.7, maxLat: 35.2, minLng: 116.3, maxLng: 122.0 },
-                    { name: '浙江', minLat: 27.1, maxLat: 31.2, minLng: 118.0, maxLng: 123.0 },
-                    { name: '安徽', minLat: 29.2, maxLat: 34.7, minLng: 114.9, maxLng: 119.7 },
-                    { name: '福建', minLat: 23.5, maxLat: 28.4, minLng: 115.9, maxLng: 120.7 },
-                    { name: '江西', minLat: 24.5, maxLat: 30.1, minLng: 113.5, maxLng: 118.6 },
-                    { name: '山东', minLat: 34.2, maxLat: 38.3, minLng: 114.8, maxLng: 122.8 },
-                    { name: '河南', minLat: 31.4, maxLat: 36.4, minLng: 110.4, maxLng: 116.7 },
-                    { name: '湖北', minLat: 29.0, maxLat: 33.3, minLng: 108.4, maxLng: 116.1 },
-                    { name: '湖南', minLat: 24.6, maxLat: 30.1, minLng: 108.8, maxLng: 114.3 },
-                    { name: '广东', minLat: 20.1, maxLat: 25.5, minLng: 109.7, maxLng: 117.3 },
-                    { name: '广西', minLat: 20.9, maxLat: 26.4, minLng: 104.3, maxLng: 112.1 },
-                    { name: '海南', minLat: 18.1, maxLat: 20.2, minLng: 108.6, maxLng: 111.3 },
-                    { name: '重庆', minLat: 28.1, maxLat: 32.2, minLng: 105.3, maxLng: 110.2 },
-                    { name: '四川', minLat: 26.0, maxLat: 34.3, minLng: 97.3, maxLng: 108.6 },
-                    { name: '贵州', minLat: 24.6, maxLat: 29.2, minLng: 103.6, maxLng: 109.6 },
-                    { name: '云南', minLat: 21.1, maxLat: 29.2, minLng: 97.5, maxLng: 106.2 },
-                    { name: '西藏', minLat: 26.5, maxLat: 36.5, minLng: 78.4, maxLng: 99.1 },
-                    { name: '陕西', minLat: 31.7, maxLat: 39.6, minLng: 105.5, maxLng: 111.3 },
-                    { name: '甘肃', minLat: 32.6, maxLat: 42.8, minLng: 92.1, maxLng: 108.7 },
-                    { name: '青海', minLat: 31.4, maxLat: 39.2, minLng: 89.4, maxLng: 103.0 },
-                    { name: '宁夏', minLat: 35.1, maxLat: 39.5, minLng: 104.2, maxLng: 107.6 },
-                    { name: '新疆', minLat: 34.3, maxLat: 49.2, minLng: 73.5, maxLng: 96.4 }
-                ];
-                
-                for (const province of provinces) {
-                    if (latitude >= province.minLat && latitude <= province.maxLat &&
-                        longitude >= province.minLng && longitude <= province.maxLng) {
-                        return { province: province.name };
-                    }
-                }
-                
-                return { province: '' };
-            }
-            
-            // 判断是否为直辖市
-            isMunicipality(province) {
-                const municipalities = ['北京', '上海', '天津', '重庆'];
-                return municipalities.includes(province);
-            }
-        }
-
         // 状态管理
         let selectedFiles = [];
         let uploadInProgress = false;
         let uploadController = null;
-        const locationService = new GPSLocationService();
 
         // DOM元素
         const elements = {
@@ -589,7 +374,7 @@
             resultContent: document.getElementById('result-content'),
             serviceStatus: document.getElementById('service-status'),
             totalFiles: document.getElementById('total-files'),
-            withGps: document.getElementById('with-gps'),
+            withAddress: document.getElementById('with-address'),
             totalSize: document.getElementById('total-size')
         };
 
@@ -645,7 +430,7 @@
                 );
                 
                 if (!existingFile && selectedFiles.length < CONFIG.MAX_FILES) {
-                    // 提取EXIF信息（包含GPS）
+                    // 提取EXIF信息
                     const exifInfo = await extractExifInfo(file);
                     
                     selectedFiles.push({
@@ -671,73 +456,44 @@
             elements.fileInput.value = '';
         }
 
-        // 提取EXIF信息（包含GPS解析）
+        // 提取EXIF信息
         async function extractExifInfo(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
                 
-                reader.onload = async function(e) {
+                reader.onload = function(e) {
                     try {
-                        // 模拟EXIF数据提取
-                        const hasGPS = Math.random() > 0.3; // 70%的照片有GPS信息
-                        const hasDateTime = Math.random() > 0.2; // 80%的照片有拍摄时间
-                        
-                        let locationInfo = {
-                            hasGPS: false,
-                            province: '',
-                            city: '',
-                            latitude: null,
-                            longitude: null,
-                            source: 'none'
-                        };
-                        
-                        // 如果有GPS信息，进行解析
-                        if (hasGPS) {
-                            // 生成模拟的GPS坐标（中国范围内）
-                            const latitude = 39.9 + (Math.random() - 0.5) * 10;
-                            const longitude = 116.4 + (Math.random() - 0.5) * 10;
-                            
-                            // 使用GPS解析服务
-                            locationInfo = await locationService.parseLocation(latitude, longitude);
-                            locationInfo.hasGPS = true;
-                            locationInfo.latitude = latitude;
-                            locationInfo.longitude = longitude;
-                        }
+                        // 在实际应用中，这里应该使用EXIF.js库提取完整的EXIF数据
+                        // 这里使用模拟数据
+                        const hasGPS = Math.random() > 0.5; // 50%的照片有GPS信息
+                        const hasDateTime = Math.random() > 0.3; // 70%的照片有拍摄时间
                         
                         resolve({
-                            // GPS位置信息
-                            ...locationInfo,
-                            // 拍摄时间
-                            originalTime: hasDateTime ? 
-                                new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString() : 
-                                null,
+                            gpsLatitude: hasGPS ? (39.9042 + Math.random() * 0.1).toFixed(6) : null,
+                            gpsLongitude: hasGPS ? (116.4074 + Math.random() * 0.1).toFixed(6) : null,
+                            originalTime: hasDateTime ? new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString() : null,
+                            hasGPS: hasGPS,
                             hasDateTime: hasDateTime
                         });
                     } catch (error) {
                         console.error('提取EXIF信息失败:', error);
                         resolve({
-                            hasGPS: false,
-                            province: '',
-                            city: '',
-                            latitude: null,
-                            longitude: null,
+                            gpsLatitude: null,
+                            gpsLongitude: null,
                             originalTime: null,
-                            hasDateTime: false,
-                            source: 'error'
+                            hasGPS: false,
+                            hasDateTime: false
                         });
                     }
                 };
                 
                 reader.onerror = function() {
                     resolve({
-                        hasGPS: false,
-                        province: '',
-                        city: '',
-                        latitude: null,
-                        longitude: null,
+                        gpsLatitude: null,
+                        gpsLongitude: null,
                         originalTime: null,
-                        hasDateTime: false,
-                        source: 'read_error'
+                        hasGPS: false,
+                        hasDateTime: false
                     });
                 };
                 
@@ -745,12 +501,396 @@
             });
         }
 
-        // 其余函数保持不变...
-        // [updateFileList, updateStats, attachCancelButtonListeners, cancelFileUpload, formatFileSize, 
-        //  updateUploadButton, getStatusText, startUpload, uploadFile, generateFileFingerprint,
-        //  readChunkAsBase64, callCloudFunction, checkServiceStatus, clearFiles, showResult, setupDragAndDrop]
-        // 这些函数的代码与之前相同，为节省篇幅省略重复代码
+        // 更新文件列表
+        function updateFileList() {
+            if (selectedFiles.length === 0) {
+                elements.fileList.innerHTML = '<div class="empty-state">暂无照片</div>';
+                elements.emptyState.style.display = 'block';
+                return;
+            }
+            
+            elements.emptyState.style.display = 'none';
+            
+            elements.fileList.innerHTML = selectedFiles.map((fileData) => {
+                const errorInfo = fileData.error ? 
+                    `<div style="color: #dc3545; font-size: 11px; margin-top: 4px;">错误: ${fileData.error}</div>` : '';
+                
+                // 地址信息显示
+                const addressInfo = fileData.exifInfo.hasGPS ? 
+                    `<span>📍 有地址</span>` : 
+                    `<span>❌ 无地址</span>`;
+                
+                // 拍摄时间显示
+                const timeInfo = fileData.exifInfo.originalTime ? 
+                    `<span>📅 ${new Date(fileData.exifInfo.originalTime).toLocaleDateString()}</span>` : 
+                    `<span>⏰ 无时间</span>`;
+                
+                // 文件大小
+                const sizeInfo = `<span>📦 ${formatFileSize(fileData.file.size)}</span>`;
+                
+                // 取消按钮
+                const cancelButton = fileData.status === 'uploading' ? 
+                    `<button class="cancel-btn" data-filename="${fileData.file.name}" title="取消上传">❌</button>` : '';
+                
+                return `
+                <div class="file-item">
+                    <div class="file-icon">🖼️</div>
+                    <div class="file-info">
+                        <div class="file-name">${fileData.file.name}</div>
+                        <div class="file-meta">
+                            ${addressInfo}
+                            ${timeInfo}
+                            ${sizeInfo}
+                        </div>
+                        ${errorInfo}
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${fileData.progress}%"></div>
+                            </div>
+                            <div class="progress-text">${fileData.progress}%</div>
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <div class="file-status status-${fileData.status}">
+                            ${getStatusText(fileData.status)}
+                        </div>
+                        ${cancelButton}
+                    </div>
+                </div>
+                `;
+            }).join('');
+            
+            // 添加取消按钮的事件监听
+            attachCancelButtonListeners();
+        }
 
+        // 更新统计信息
+        function updateStats() {
+            elements.totalFiles.textContent = selectedFiles.length;
+            
+            const withAddressCount = selectedFiles.filter(f => f.exifInfo.hasGPS).length;
+            elements.withAddress.textContent = withAddressCount;
+            
+            const totalBytes = selectedFiles.reduce((sum, fileData) => sum + fileData.file.size, 0);
+            elements.totalSize.textContent = (totalBytes / 1024 / 1024).toFixed(1) + 'MB';
+        }
+
+        // 添加取消按钮事件监听
+        function attachCancelButtonListeners() {
+            document.querySelectorAll('.cancel-btn').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    const fileName = this.getAttribute('data-filename');
+                    cancelFileUpload(fileName);
+                });
+            });
+        }
+
+        // 取消文件上传
+        function cancelFileUpload(fileName) {
+            const fileData = selectedFiles.find(f => f.file.name === fileName);
+            if (fileData && fileData.status === 'uploading') {
+                if (uploadController) {
+                    uploadController.abort();
+                }
+                fileData.status = 'error';
+                fileData.error = '上传已取消';
+                updateFileList();
+                updateUploadButton();
+                console.log('已取消文件上传:', fileName);
+            }
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // 更新上传按钮状态
+        function updateUploadButton() {
+            const hasFiles = selectedFiles.length > 0;
+            const hasPendingFiles = selectedFiles.some(f => f.status === 'pending' || f.status === 'error');
+            const shouldEnable = hasFiles && hasPendingFiles && !uploadInProgress;
+            
+            elements.startUpload.disabled = !shouldEnable;
+            elements.startUpload.textContent = uploadInProgress ? '上传中...' : '开始上传';
+        }
+
+        // 获取状态文本
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '等待',
+                'uploading': '上传中',
+                'completed': '完成',
+                'error': '失败'
+            };
+            return statusMap[status] || status;
+        }
+
+        // 开始上传
+        async function startUpload() {
+            console.log('开始上传流程...');
+            
+            if (uploadInProgress) return;
+            
+            const pendingFiles = selectedFiles.filter(f => f.status === 'pending' || f.status === 'error');
+            if (pendingFiles.length === 0) return;
+            
+            uploadInProgress = true;
+            uploadController = new AbortController();
+            updateUploadButton();
+            
+            let successCount = 0;
+            let errorCount = 0;
+            
+            for (let i = 0; i < pendingFiles.length; i++) {
+                if (uploadController.signal.aborted) break;
+                
+                const fileData = pendingFiles[i];
+                fileData.status = 'uploading';
+                fileData.error = null;
+                fileData.progress = 0;
+                updateFileList();
+                
+                try {
+                    const result = await uploadFile(fileData, uploadController.signal);
+                    fileData.status = 'completed';
+                    fileData.progress = 100;
+                    fileData.fileId = result.fileID;
+                    successCount++;
+                } catch (error) {
+                    fileData.status = 'error';
+                    fileData.error = error.message;
+                    errorCount++;
+                    if (error.name === 'AbortError') break;
+                }
+                
+                updateFileList();
+            }
+            
+            uploadInProgress = false;
+            uploadController = null;
+            updateUploadButton();
+            showResult(successCount, errorCount);
+        }
+
+        // 上传单个文件
+        async function uploadFile(fileData, signal) {
+            console.log('上传文件:', fileData.file.name);
+            
+            const fileSize = fileData.file.size;
+            const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
+            
+            // 生成文件指纹
+            if (!fileData.fingerprint) {
+                fileData.fingerprint = await generateFileFingerprint(fileData.file);
+            }
+            
+            // 上传所有分块
+            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                if (signal.aborted) {
+                    throw new DOMException('上传已取消', 'AbortError');
+                }
+                
+                const start = chunkIndex * CONFIG.CHUNK_SIZE;
+                const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
+                const chunk = fileData.file.slice(start, end);
+                
+                const chunkBase64 = await readChunkAsBase64(chunk);
+                
+                // 上传分块（包含EXIF信息）
+                const result = await callCloudFunction({
+                    action: 'upload_chunk',
+                    chunkIndex: chunkIndex,
+                    totalChunks: totalChunks,
+                    fileName: fileData.file.name,
+                    fingerprint: fileData.fingerprint,
+                    data: chunkBase64,
+                    fileSize: fileSize,
+                    // 添加EXIF信息
+                    gpsLatitude: fileData.exifInfo.gpsLatitude,
+                    gpsLongitude: fileData.exifInfo.gpsLongitude,
+                    originalTime: fileData.exifInfo.originalTime
+                }, signal);
+                
+                if (!result.success) {
+                    throw new Error(`分块上传失败: ${result.message}`);
+                }
+                
+                fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+                updateFileList();
+            }
+            
+            // 完成上传
+            const completeResult = await callCloudFunction({
+                action: 'complete_upload',
+                fileName: fileData.file.name,
+                fingerprint: fileData.fingerprint,
+                totalChunks: totalChunks,
+                fileSize: fileSize,
+                // 添加EXIF信息
+                gpsLatitude: fileData.exifInfo.gpsLatitude,
+                gpsLongitude: fileData.exifInfo.gpsLongitude,
+                originalTime: fileData.exifInfo.originalTime
+            }, signal);
+            
+            if (!completeResult.success) {
+                throw new Error('文件合并失败: ' + completeResult.message);
+            }
+            
+            console.log('文件上传完成:', completeResult);
+            return completeResult;
+        }
+
+        // 生成文件指纹
+        async function generateFileFingerprint(file) {
+            return new Promise((resolve) => {
+                const spark = new SparkMD5.ArrayBuffer();
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    spark.append(e.target.result);
+                    const hash = spark.end();
+                    resolve(hash);
+                };
+                
+                reader.onerror = () => {
+                    const backupHash = 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    resolve(backupHash);
+                };
+                
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 读取分块为Base64
+        function readChunkAsBase64(chunk) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataURL = reader.result;
+                    const base64Data = dataURL.split(',')[1];
+                    resolve(base64Data);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(chunk);
+            });
+        }
+
+        // 调用云函数
+        async function callCloudFunction(data, signal) {
+            try {
+                const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Referer': 'https://album-70p.pages.dev'
+                    },
+                    body: JSON.stringify(data),
+                    signal: signal
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                return result;
+                
+            } catch (error) {
+                console.error('云函数调用失败:', error);
+                
+                if (error.name === 'AbortError') {
+                    throw error;
+                }
+                
+                return {
+                    success: false,
+                    message: '网络请求失败: ' + error.message
+                };
+            }
+        }
+
+        // 检查服务状态
+        async function checkServiceStatus() {
+            try {
+                const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Referer': 'https://album-70p.pages.dev'
+                    },
+                    body: JSON.stringify({
+                        action: 'health_check'
+                    })
+                });
+                
+                if (response.ok) {
+                    elements.serviceStatus.textContent = '✅ 服务正常';
+                    elements.serviceStatus.style.background = '#e8f5e8';
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                elements.serviceStatus.textContent = '❌ 服务连接失败';
+                elements.serviceStatus.style.background = '#f8d7da';
+            }
+        }
+
+        // 清空文件
+        function clearFiles() {
+            if (!uploadInProgress) {
+                selectedFiles = [];
+                updateFileList();
+                updateUploadButton();
+                updateStats();
+                elements.resultInfo.style.display = 'none';
+            } else {
+                alert('上传进行中，请等待完成后清空');
+            }
+        }
+
+        // 显示结果
+        function showResult(success, error) {
+            const withAddressCount = selectedFiles.filter(f => f.exifInfo.hasGPS).length;
+            
+            elements.resultContent.innerHTML = `
+                <div>
+                    <div>✅ 成功上传: ${success} 个文件</div>
+                    <div>❌ 上传失败: ${error} 个文件</div>
+                    <div>📍 含地址信息: ${withAddressCount} 个文件</div>
+                    ${error > 0 ? '<div style="color: #dc3545; margin-top: 10px;">请检查网络连接后重试失败的文件</div>' : ''}
+                </div>
+            `;
+            elements.resultInfo.style.display = 'block';
+        }
+
+        // 设置拖拽上传
+        function setupDragAndDrop() {
+            elements.uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                elements.uploadArea.classList.add('active');
+            });
+
+            elements.uploadArea.addEventListener('dragleave', () => {
+                elements.uploadArea.classList.remove('active');
+            });
+
+            elements.uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                elements.uploadArea.classList.remove('active');
+                if (e.dataTransfer.files.length) {
+                    elements.fileInput.files = e.dataTransfer.files;
+                    handleFileSelect({ target: elements.fileInput });
+                }
+            });
+        }
+
+        // 启动应用
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
