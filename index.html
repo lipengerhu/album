@@ -5,12 +5,340 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
     <style>
-        /* 样式保持不变 */
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            background: #f8f9fa;
+            min-height: 100vh; 
+            padding: 16px; 
+            color: #333;
+            line-height: 1.5;
+        }
+        
+        .container { 
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            padding: 20px;
+            width: 100%; 
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        
+        h1 { 
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+        
+        .subtitle { 
+            color: #7f8c8d; 
+            font-size: 14px;
+        }
+        
+        .upload-area { 
+            border: 2px dashed #4CAF50; 
+            border-radius: 12px;
+            padding: 40px 20px;
+            margin-bottom: 20px; 
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+            background: #f8fff8; 
+            text-align: center;
+        }
+        
+        .upload-area.active { 
+            background: #e8f5e8; 
+            border-color: #2e7d32; 
+        }
+        
+        .upload-icon { 
+            font-size: 48px;
+            margin-bottom: 12px; 
+            color: #4CAF50;
+        }
+        
+        .upload-text {
+            font-size: 17px;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+        
+        .upload-hint {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        
+        #file-input { 
+            display: none; 
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        
+        .file-list { 
+            margin-bottom: 20px;
+            max-height: 50vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            margin-bottom: 12px;
+            background: white;
+            border-radius: 12px;
+            border-left: 4px solid #4CAF50;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+        
+        .file-icon {
+            font-size: 24px;
+            margin-right: 16px;
+            color: #4CAF50;
+        }
+        
+        .file-info { 
+            flex: 1; 
+            min-width: 0;
+        }
+        
+        .file-name { 
+            font-weight: 500; 
+            margin-bottom: 6px; 
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 15px;
+        }
+        
+        .file-meta {
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+        
+        .file-status { 
+            font-size: 12px; 
+            padding: 6px 10px; 
+            border-radius: 12px; 
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-uploading { background: #cce5ff; color: #004085; }
+        .status-completed { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .status-cancelled { background: #f8d7da; color: #721c24; }
+        
+        .progress-container {
+            margin: 10px 0 6px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #f0f0f0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.3s;
+            border-radius: 3px;
+        }
+        
+        .progress-text {
+            font-size: 11px;
+            color: #7f8c8d;
+            text-align: right;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .btn { 
+            flex: 1;
+            background: #4CAF50; 
+            color: white; 
+            border: none; 
+            padding: 16px;
+            font-size: 17px; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            transition: all 0.3s;
+            font-weight: 500;
+            text-align: center;
+        }
+        
+        .btn:active {
+            transform: scale(0.98);
+        }
+        
+        .btn:disabled { 
+            background: #cccccc; 
+            cursor: not-allowed; 
+            transform: none;
+        }
+        
+        .btn-clear {
+            background: #6c757d;
+        }
+        
+        .empty-state {
+            text-align: center; 
+            color: #bdc3c7; 
+            padding: 60px 20px; 
+            font-size: 16px;
+        }
+        
+        .result-info {
+            margin-top: 16px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            display: none;
+            font-size: 14px;
+        }
+        
+        .result-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+        
+        .service-status {
+            background: #e3f2fd;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
+        }
+        
+        .cancel-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 16px;
+            color: #dc3545;
+            margin-left: 12px;
+        }
+
+        @media (max-width: 380px) {
+            .container {
+                padding: 16px;
+            }
+            
+            .stats {
+                padding: 12px;
+            }
+            
+            .upload-area {
+                padding: 30px 16px;
+            }
+            
+            .file-item {
+                padding: 12px;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- HTML结构保持不变 -->
+        <div class="header">
+            <h1>照片上传</h1>
+            <p class="subtitle">自动提取照片信息</p>
+        </div>
+        
+        <div class="service-status" id="service-status">
+            检查服务状态...
+        </div>
+        
+        <div class="upload-area" id="upload-area">
+            <div class="upload-icon">📷</div>
+            <div class="upload-text">点击选择照片</div>
+            <div class="upload-hint">支持JPG、PNG等格式</div>
+            <input type="file" id="file-input" accept="image/*" multiple>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-value" id="total-files">0</div>
+                <div class="stat-label">总文件</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="with-address">0</div>
+                <div class="stat-label">含地址信息</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="total-size">0MB</div>
+                <div class="stat-label">总大小</div>
+            </div>
+        </div>
+        
+        <div class="file-list" id="file-list">
+            <div class="empty-state" id="empty-state">
+                暂无照片
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" id="start-upload" disabled>开始上传</button>
+            <button class="btn btn-clear" id="clear-files">清空列表</button>
+        </div>
+        
+        <div class="result-info" id="result-info">
+            <div class="result-title">上传结果</div>
+            <div id="result-content"></div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
@@ -31,29 +359,56 @@
         let currentUploadController = null;
         let currentUploadIndex = 0;
 
-        // DOM元素
-        const elements = {
-            fileInput: document.getElementById('file-input'),
-            uploadArea: document.getElementById('upload-area'),
-            fileList: document.getElementById('file-list'),
-            emptyState: document.getElementById('empty-state'),
-            startUpload: document.getElementById('start-upload'),
-            clearFiles: document.getElementById('clear-files'),
-            resultInfo: document.getElementById('result-info'),
-            resultContent: document.getElementById('result-content'),
-            serviceStatus: document.getElementById('service-status'),
-            totalFiles: document.getElementById('total-files'),
-            withAddress: document.getElementById('with-address'),
-            totalSize: document.getElementById('total-size')
-        };
+        // DOM元素 - 在DOM加载完成后初始化
+        let elements = {};
+
+        // 初始化DOM元素引用
+        function initializeElements() {
+            elements = {
+                fileInput: document.getElementById('file-input'),
+                uploadArea: document.getElementById('upload-area'),
+                fileList: document.getElementById('file-list'),
+                emptyState: document.getElementById('empty-state'),
+                startUpload: document.getElementById('start-upload'),
+                clearFiles: document.getElementById('clear-files'),
+                resultInfo: document.getElementById('result-info'),
+                resultContent: document.getElementById('result-content'),
+                serviceStatus: document.getElementById('service-status'),
+                totalFiles: document.getElementById('total-files'),
+                withAddress: document.getElementById('with-address'),
+                totalSize: document.getElementById('total-size')
+            };
+            
+            // 检查所有必要的元素是否都存在
+            const requiredElements = ['fileInput', 'uploadArea', 'fileList', 'startUpload', 'clearFiles'];
+            for (const elementName of requiredElements) {
+                if (!elements[elementName]) {
+                    console.error(`找不到必要的DOM元素: ${elementName}`);
+                    return false;
+                }
+            }
+            return true;
+        }
 
         // 初始化函数
         function init() {
+            // 先初始化DOM元素引用
+            if (!initializeElements()) {
+                console.error('初始化DOM元素失败，请检查HTML结构');
+                return;
+            }
+            
             initEventListeners();
             checkServiceStatus();
         }
 
         function initEventListeners() {
+            // 添加安全检查
+            if (!elements.uploadArea || !elements.fileInput) {
+                console.error('DOM元素未正确初始化');
+                return;
+            }
+
             elements.uploadArea.addEventListener('click', function() {
                 elements.fileInput.click();
             });
@@ -113,26 +468,15 @@
             elements.fileInput.value = '';
         }
 
-        // 提取照片信息 - 修复语法错误
+        // 提取照片信息 - 简化版本，专注于GPS提取
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
-                // 方法1: 使用EXIF.js
+                // 使用EXIF.js来读取照片的EXIF数据
                 EXIF.getData(file, function() {
                     try {
-                        console.log('开始提取文件信息:', file.name);
-                        
                         // 获取所有EXIF数据
                         const allExifData = EXIF.getAllTags(this);
                         console.log('完整EXIF数据:', allExifData);
-                        
-                        // 特别检查GPS相关标签
-                        const gpsTags = {};
-                        Object.keys(allExifData).forEach(key => {
-                            if (key.includes('GPS') || key.includes('gps')) {
-                                gpsTags[key] = allExifData[key];
-                            }
-                        });
-                        console.log('GPS相关标签:', gpsTags);
                         
                         // 提取GPS信息
                         const gpsInfo = extractGPSInfo(allExifData);
@@ -140,208 +484,48 @@
                         // 提取时间信息
                         const timeInfo = extractTimeInfo(allExifData, file);
                         
-                        // 如果EXIF.js没有提取到GPS，尝试其他方法
-                        if (!gpsInfo.hasGPS) {
-                            console.log('EXIF.js未提取到GPS，尝试其他方法...');
-                            // 使用Promise来处理异步操作
-                            tryAlternativeGPSMethods(file).then(alternativeGPS => {
-                                if (alternativeGPS.hasGPS) {
-                                    Object.assign(gpsInfo, alternativeGPS);
-                                }
-                                console.log('最终GPS信息:', gpsInfo);
-                                
-                                resolve({
-                                    ...gpsInfo,
-                                    ...timeInfo,
-                                    rawExif: allExifData
-                                });
-                            }).catch(() => {
-                                console.log('最终GPS信息:', gpsInfo);
-                                resolve({
-                                    ...gpsInfo,
-                                    ...timeInfo,
-                                    rawExif: allExifData
-                                });
-                            });
-                        } else {
-                            console.log('最终GPS信息:', gpsInfo);
-                            resolve({
-                                ...gpsInfo,
-                                ...timeInfo,
-                                rawExif: allExifData
-                            });
-                        }
+                        resolve({
+                            ...gpsInfo,
+                            ...timeInfo
+                        });
                     } catch (error) {
                         console.error('提取EXIF信息失败:', error);
-                        // 如果EXIF提取失败，尝试其他方法
-                        tryAlternativeGPSMethods(file).then(alternativeResult => {
-                            resolve({
-                                ...alternativeResult,
-                                earliestTime: null,
-                                hasTime: false
-                            });
-                        }).catch(() => {
-                            resolve({
-                                hasGPS: false,
-                                latitude: null,
-                                longitude: null,
-                                earliestTime: null,
-                                hasTime: false
-                            });
+                        resolve({
+                            hasGPS: false,
+                            latitude: null,
+                            longitude: null,
+                            earliestTime: null,
+                            hasTime: false
                         });
                     }
                 });
             });
         }
 
-        // 尝试其他GPS提取方法
-        function tryAlternativeGPSMethods(file) {
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                
-                reader.onload = function(e) {
-                    try {
-                        // 方法2: 尝试从二进制数据中查找GPS信息
-                        const arrayBuffer = e.target.result;
-                        const gpsInfo = findGPSInBinary(arrayBuffer);
-                        
-                        if (gpsInfo.hasGPS) {
-                            console.log('从二进制数据中找到GPS信息');
-                            resolve(gpsInfo);
-                        } else {
-                            // 方法3: 尝试使用DataView读取
-                            const dataViewGPS = parseGPSWithDataView(arrayBuffer);
-                            if (dataViewGPS.hasGPS) {
-                                console.log('使用DataView找到GPS信息');
-                                resolve(dataViewGPS);
-                            } else {
-                                resolve({
-                                    hasGPS: false,
-                                    latitude: null,
-                                    longitude: null
-                                });
-                            }
-                        }
-                    } catch (error) {
-                        console.error('其他GPS提取方法失败:', error);
-                        resolve({
-                            hasGPS: false,
-                            latitude: null,
-                            longitude: null
-                        });
-                    }
-                };
-                
-                reader.onerror = function() {
-                    resolve({
-                        hasGPS: false,
-                        latitude: null,
-                        longitude: null
-                    });
-                };
-                
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
-        // 从二进制数据中查找GPS信息
-        function findGPSInBinary(arrayBuffer) {
-            try {
-                const uint8Array = new Uint8Array(arrayBuffer);
-                const decoder = new TextDecoder('utf-8');
-                const text = decoder.decode(uint8Array);
-                
-                // 查找常见的GPS标记
-                if (text.includes('GPS') || text.includes('gps')) {
-                    console.log('在二进制数据中找到GPS标记');
-                    // 这里可以添加更复杂的GPS数据解析逻辑
-                }
-                
-                return {
-                    hasGPS: false,
-                    latitude: null,
-                    longitude: null
-                };
-            } catch (error) {
-                return {
-                    hasGPS: false,
-                    latitude: null,
-                    longitude: null
-                };
-            }
-        }
-
-        // 使用DataView解析GPS
-        function parseGPSWithDataView(arrayBuffer) {
-            try {
-                const dataView = new DataView(arrayBuffer);
-                
-                // 查找EXIF头 (0xFF 0xE1)
-                for (let i = 0; i < arrayBuffer.byteLength - 4; i++) {
-                    if (dataView.getUint16(i) === 0xFFE1) {
-                        console.log('找到EXIF段');
-                        // 这里可以添加EXIF段解析逻辑
-                    }
-                }
-                
-                return {
-                    hasGPS: false,
-                    latitude: null,
-                    longitude: null
-                };
-            } catch (error) {
-                return {
-                    hasGPS: false,
-                    latitude: null,
-                    longitude: null
-                };
-            }
-        }
-
-        // 提取GPS信息 - 增强版本
+        // 提取GPS信息
         function extractGPSInfo(exifData) {
             const gpsInfo = {
                 hasGPS: false,
                 latitude: null,
-                longitude: null,
-                rawGPS: null,
-                debug: {}
+                longitude: null
             };
             
-            // 记录所有GPS相关标签用于调试
-            Object.keys(exifData).forEach(key => {
-                if (key.toUpperCase().includes('GPS')) {
-                    gpsInfo.debug[key] = exifData[key];
-                }
-            });
-            
-            console.log('GPS调试信息:', gpsInfo.debug);
-            
-            // 检查是否存在GPS数据 - 多种可能的标签名称
-            const gpsLatitude = exifData.GPSLatitude || exifData.gpsLatitude;
-            const gpsLongitude = exifData.GPSLongitude || exifData.gpsLongitude;
-            const gpsLatitudeRef = exifData.GPSLatitudeRef || exifData.gpsLatitudeRef;
-            const gpsLongitudeRef = exifData.GPSLongitudeRef || exifData.gpsLongitudeRef;
-            
-            if (gpsLatitude && gpsLongitude) {
+            // 检查是否存在GPS数据
+            if (exifData.GPSLatitude && exifData.GPSLongitude && 
+                exifData.GPSLatitudeRef && exifData.GPSLongitudeRef) {
+                
                 console.log('找到GPS坐标:', {
-                    latitude: gpsLatitude,
-                    longitude: gpsLongitude,
-                    latRef: gpsLatitudeRef,
-                    longRef: gpsLongitudeRef
+                    latitude: exifData.GPSLatitude,
+                    longitude: exifData.GPSLongitude,
+                    latRef: exifData.GPSLatitudeRef,
+                    longRef: exifData.GPSLongitudeRef
                 });
                 
                 gpsInfo.hasGPS = true;
-                gpsInfo.rawGPS = {
-                    latitude: gpsLatitude,
-                    longitude: gpsLongitude,
-                    latitudeRef: gpsLatitudeRef,
-                    longitudeRef: gpsLongitudeRef
-                };
                 
                 // 转换GPS坐标为十进制
-                gpsInfo.latitude = convertGPSCoordinate(gpsLatitude, gpsLatitudeRef);
-                gpsInfo.longitude = convertGPSCoordinate(gpsLongitude, gpsLongitudeRef);
+                gpsInfo.latitude = convertGPSCoordinate(exifData.GPSLatitude, exifData.GPSLatitudeRef);
+                gpsInfo.longitude = convertGPSCoordinate(exifData.GPSLongitude, exifData.GPSLongitudeRef);
                 
                 console.log('转换后的GPS坐标:', {
                     latitude: gpsInfo.latitude,
@@ -349,73 +533,22 @@
                 });
             } else {
                 console.log('未找到GPS坐标数据');
-                // 检查是否有其他格式的GPS数据
-                if (exifData.GPSInfo) {
-                    console.log('找到GPSInfo:', exifData.GPSInfo);
-                }
-                if (exifData.gps) {
-                    console.log('找到gps:', exifData.gps);
-                }
             }
             
             return gpsInfo;
         }
 
-        // 转换GPS坐标为十进制 - 增强版本
+        // 转换GPS坐标为十进制
         function convertGPSCoordinate(coord, ref) {
-            if (!coord) {
-                console.log('坐标数据为空');
+            if (!coord || !Array.isArray(coord) || coord.length < 3) {
                 return null;
             }
             
             try {
-                console.log('转换坐标:', coord, '参考:', ref);
-                
-                // 处理不同的坐标格式
-                let degrees, minutes, seconds;
-                
-                if (Array.isArray(coord)) {
-                    // 格式: [度, 分, 秒]
-                    if (coord.length >= 3) {
-                        degrees = coord[0];
-                        minutes = coord[1];
-                        seconds = coord[2];
-                    } else {
-                        console.log('坐标数组长度不足:', coord.length);
-                        return null;
-                    }
-                } else if (typeof coord === 'string') {
-                    // 格式: "36;48;28.98"
-                    const parts = coord.split(';');
-                    if (parts.length >= 3) {
-                        degrees = parseFloat(parts[0]);
-                        minutes = parseFloat(parts[1]);
-                        seconds = parseFloat(parts[2]);
-                    } else {
-                        console.log('坐标字符串格式错误:', coord);
-                        return null;
-                    }
-                } else if (typeof coord === 'number') {
-                    // 直接是十进制数字
-                    let decimal = coord;
-                    if (ref === 'S' || ref === 'W') {
-                        decimal = -decimal;
-                    }
-                    return decimal;
-                } else {
-                    console.log('未知坐标格式:', typeof coord, coord);
-                    return null;
-                }
-                
-                // 确保值是数字
-                degrees = typeof degrees === 'number' ? degrees : parseFloat(degrees);
-                minutes = typeof minutes === 'number' ? minutes : parseFloat(minutes);
-                seconds = typeof seconds === 'number' ? seconds : parseFloat(seconds);
-                
-                if (isNaN(degrees) || isNaN(minutes) || isNaN(seconds)) {
-                    console.log('坐标值包含非数字:', degrees, minutes, seconds);
-                    return null;
-                }
+                // GPS坐标格式：度、分、秒
+                const degrees = coord[0];
+                const minutes = coord[1];
+                const seconds = coord[2];
                 
                 // 转换为十进制
                 let decimal = degrees + minutes / 60 + seconds / 3600;
@@ -425,11 +558,9 @@
                     decimal = -decimal;
                 }
                 
-                console.log('坐标转换结果:', decimal);
                 return decimal;
-                
             } catch (error) {
-                console.error('GPS坐标转换失败:', error, '坐标:', coord, '参考:', ref);
+                console.error('GPS坐标转换失败:', error);
                 return null;
             }
         }
@@ -458,8 +589,7 @@
             
             return {
                 earliestTime: earliestTime,
-                hasTime: !!earliestTime,
-                rawTimes: times
+                hasTime: !!earliestTime
             };
         }
 
@@ -470,11 +600,9 @@
                 const parts = dateString.split(' ');
                 const datePart = parts[0].replace(/:/g, '-');
                 const timePart = parts[1];
-                const result = new Date(datePart + 'T' + timePart).toISOString();
-                console.log('解析EXIF日期:', dateString, '->', result);
-                return result;
+                return new Date(datePart + 'T' + timePart).toISOString();
             } catch (error) {
-                console.error('解析EXIF日期失败:', error, '日期字符串:', dateString);
+                console.error('解析EXIF日期失败:', error);
                 return null;
             }
         }
@@ -498,7 +626,7 @@
             return earliestDate.toISOString();
         }
 
-        // 更新文件列表 - 显示详细的GPS信息
+        // 更新文件列表
         function updateFileList() {
             // 只显示未取消的文件
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
@@ -520,17 +648,10 @@
                     `<div class="file-meta">📅 ${new Date(fileData.fileInfo.earliestTime).toLocaleDateString()}</div>` : 
                     `<div class="file-meta">⏰ 无时间信息</div>`;
                 
-                // GPS信息显示 - 更详细
-                let gpsInfo = '';
-                if (fileData.fileInfo.hasGPS) {
-                    if (fileData.fileInfo.latitude && fileData.fileInfo.longitude) {
-                        gpsInfo = `<div class="file-meta">📍 GPS: ${fileData.fileInfo.latitude.toFixed(6)}, ${fileData.fileInfo.longitude.toFixed(6)}</div>`;
-                    } else {
-                        gpsInfo = `<div class="file-meta">📍 有GPS数据但无法解析</div>`;
-                    }
-                } else {
-                    gpsInfo = `<div class="file-meta">📍 无GPS信息</div>`;
-                }
+                // GPS信息显示
+                const gpsInfo = fileData.fileInfo.hasGPS ? 
+                    `<div class="file-meta">📍 有GPS信息 (${fileData.fileInfo.latitude?.toFixed(6)}, ${fileData.fileInfo.longitude?.toFixed(6)})</div>` : 
+                    `<div class="file-meta">📍 无GPS信息</div>`;
                 
                 // 文件大小
                 const sizeInfo = `<div class="file-meta">📦 ${formatFileSize(fileData.file.size)}</div>`;
@@ -572,8 +693,7 @@
             attachCancelButtonListeners();
         }
 
-        // 其余函数保持不变...
-        // 更新统计信息 - 修改：不统计已取消的文件
+        // 更新统计信息
         function updateStats() {
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
             elements.totalFiles.textContent = visibleFiles.length;
@@ -595,7 +715,7 @@
             });
         }
 
-        // 取消文件上传 - 修改：自动开始下一个文件
+        // 取消文件上传
         function cancelFileUpload(fileName) {
             const fileData = selectedFiles.find(f => f.file.name === fileName);
             if (fileData && (fileData.status === 'uploading' || fileData.status === 'pending')) {
@@ -968,8 +1088,13 @@
             });
         }
 
-        // 启动应用
-        document.addEventListener('DOMContentLoaded', init);
+        // 启动应用 - 确保DOM完全加载后再执行
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            // DOM已经加载完成
+            init();
+        }
     </script>
 </body>
 </html>
