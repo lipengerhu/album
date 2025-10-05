@@ -113,7 +113,7 @@
             elements.fileInput.value = '';
         }
 
-        // 提取照片信息 - 修复GPS提取问题
+        // 提取照片信息 - 修复语法错误
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
                 // 方法1: 使用EXIF.js
@@ -134,7 +134,7 @@
                         });
                         console.log('GPS相关标签:', gpsTags);
                         
-                        // 提取GPS信息 - 使用多种方法
+                        // 提取GPS信息
                         const gpsInfo = extractGPSInfo(allExifData);
                         
                         // 提取时间信息
@@ -143,19 +143,34 @@
                         // 如果EXIF.js没有提取到GPS，尝试其他方法
                         if (!gpsInfo.hasGPS) {
                             console.log('EXIF.js未提取到GPS，尝试其他方法...');
-                            const alternativeGPS = await tryAlternativeGPSMethods(file);
-                            if (alternativeGPS.hasGPS) {
-                                Object.assign(gpsInfo, alternativeGPS);
-                            }
+                            // 使用Promise来处理异步操作
+                            tryAlternativeGPSMethods(file).then(alternativeGPS => {
+                                if (alternativeGPS.hasGPS) {
+                                    Object.assign(gpsInfo, alternativeGPS);
+                                }
+                                console.log('最终GPS信息:', gpsInfo);
+                                
+                                resolve({
+                                    ...gpsInfo,
+                                    ...timeInfo,
+                                    rawExif: allExifData
+                                });
+                            }).catch(() => {
+                                console.log('最终GPS信息:', gpsInfo);
+                                resolve({
+                                    ...gpsInfo,
+                                    ...timeInfo,
+                                    rawExif: allExifData
+                                });
+                            });
+                        } else {
+                            console.log('最终GPS信息:', gpsInfo);
+                            resolve({
+                                ...gpsInfo,
+                                ...timeInfo,
+                                rawExif: allExifData
+                            });
                         }
-                        
-                        console.log('最终GPS信息:', gpsInfo);
-                        
-                        resolve({
-                            ...gpsInfo,
-                            ...timeInfo,
-                            rawExif: allExifData
-                        });
                     } catch (error) {
                         console.error('提取EXIF信息失败:', error);
                         // 如果EXIF提取失败，尝试其他方法
@@ -180,7 +195,7 @@
         }
 
         // 尝试其他GPS提取方法
-        async function tryAlternativeGPSMethods(file) {
+        function tryAlternativeGPSMethods(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
                 
@@ -558,7 +573,400 @@
         }
 
         // 其余函数保持不变...
-        // [保持原有的 updateStats, attachCancelButtonListeners, cancelFileUpload, formatFileSize, updateUploadButton, getStatusText, startUpload, continueUpload, uploadFile, generateFileFingerprint, readChunkAsBase64, callCloudFunction, checkServiceStatus, clearFiles, showResult, setupDragAndDrop 函数]
+        // 更新统计信息 - 修改：不统计已取消的文件
+        function updateStats() {
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            elements.totalFiles.textContent = visibleFiles.length;
+            
+            const withAddressCount = visibleFiles.filter(f => f.fileInfo.hasGPS).length;
+            elements.withAddress.textContent = withAddressCount;
+            
+            const totalBytes = visibleFiles.reduce((sum, fileData) => sum + fileData.file.size, 0);
+            elements.totalSize.textContent = (totalBytes / 1024 / 1024).toFixed(1) + 'MB';
+        }
+
+        // 添加取消按钮事件监听
+        function attachCancelButtonListeners() {
+            document.querySelectorAll('.cancel-btn').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    const fileName = this.getAttribute('data-filename');
+                    cancelFileUpload(fileName);
+                });
+            });
+        }
+
+        // 取消文件上传 - 修改：自动开始下一个文件
+        function cancelFileUpload(fileName) {
+            const fileData = selectedFiles.find(f => f.file.name === fileName);
+            if (fileData && (fileData.status === 'uploading' || fileData.status === 'pending')) {
+                // 如果是当前正在上传的文件，取消上传
+                if (currentUploadController && fileData.status === 'uploading') {
+                    currentUploadController.abort();
+                    currentUploadController = null;
+                }
+                
+                // 标记为已取消
+                fileData.status = 'cancelled';
+                fileData.error = '上传已取消';
+                fileData.progress = 0;
+                
+                // 更新界面
+                updateFileList();
+                updateStats();
+                
+                // 如果正在上传过程中取消，自动开始下一个文件
+                if (uploadInProgress) {
+                    setTimeout(() => {
+                        continueUpload();
+                    }, 100);
+                } else {
+                    updateUploadButton();
+                }
+            }
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // 更新上传按钮状态
+        function updateUploadButton() {
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const hasFiles = visibleFiles.length > 0;
+            const hasPendingFiles = visibleFiles.some(f => f.status === 'pending' || f.status === 'error');
+            const shouldEnable = hasFiles && hasPendingFiles && !uploadInProgress;
+            
+            elements.startUpload.disabled = !shouldEnable;
+            elements.startUpload.textContent = uploadInProgress ? '上传中...' : '开始上传';
+        }
+
+        // 获取状态文本
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '等待',
+                'uploading': '上传中',
+                'completed': '完成',
+                'error': '失败',
+                'cancelled': '已取消'
+            };
+            return statusMap[status] || status;
+        }
+
+        // 开始上传
+        async function startUpload() {
+            if (uploadInProgress) return;
+            
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const pendingFiles = visibleFiles.filter(f => f.status === 'pending' || f.status === 'error');
+            if (pendingFiles.length === 0) return;
+            
+            uploadInProgress = true;
+            currentUploadIndex = 0;
+            updateUploadButton();
+            
+            await continueUpload();
+        }
+
+        // 继续上传下一个文件
+        async function continueUpload() {
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const pendingFiles = visibleFiles.filter(f => f.status === 'pending' || f.status === 'error');
+            
+            if (pendingFiles.length === 0) {
+                // 所有文件都处理完了
+                uploadInProgress = false;
+                currentUploadController = null;
+                updateUploadButton();
+                showResult(
+                    visibleFiles.filter(f => f.status === 'completed').length,
+                    visibleFiles.filter(f => f.status === 'error').length
+                );
+                return;
+            }
+            
+            // 上传下一个文件
+            const fileData = pendingFiles[0];
+            currentUploadController = new AbortController();
+            
+            try {
+                await uploadFile(fileData, currentUploadController.signal);
+            } catch (error) {
+                console.error(`文件 ${fileData.file.name} 上传失败:`, error);
+            } finally {
+                currentUploadController = null;
+            }
+            
+            // 继续上传下一个文件
+            setTimeout(() => {
+                continueUpload();
+            }, 100);
+        }
+
+        // 上传单个文件
+        async function uploadFile(fileData, signal) {
+            // 更新状态为上传中
+            fileData.status = 'uploading';
+            fileData.error = null;
+            fileData.progress = 0;
+            updateFileList();
+            
+            const fileSize = fileData.file.size;
+            const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
+            
+            if (!fileData.fingerprint) {
+                fileData.fingerprint = await generateFileFingerprint(fileData.file);
+            }
+            
+            let retryCount = 0;
+            
+            while (retryCount <= CONFIG.MAX_RETRIES) {
+                try {
+                    // 上传所有分块
+                    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                        if (signal.aborted) {
+                            throw new DOMException('上传已取消', 'AbortError');
+                        }
+                        
+                        const start = chunkIndex * CONFIG.CHUNK_SIZE;
+                        const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
+                        const chunk = fileData.file.slice(start, end);
+                        
+                        const chunkBase64 = await readChunkAsBase64(chunk);
+                        
+                        // 上传分块数据
+                        const uploadData = {
+                            action: 'upload_chunk',
+                            chunkIndex: chunkIndex,
+                            totalChunks: totalChunks,
+                            fileName: fileData.file.name,
+                            fingerprint: fileData.fingerprint,
+                            data: chunkBase64,
+                            fileSize: fileSize,
+                            gpsLatitude: fileData.fileInfo.latitude,
+                            gpsLongitude: fileData.fileInfo.longitude
+                        };
+                        
+                        if (fileData.fileInfo.earliestTime) {
+                            uploadData.earliestTime = fileData.fileInfo.earliestTime;
+                        }
+                        
+                        const result = await callCloudFunction(uploadData, signal);
+                        
+                        if (!result.success) {
+                            throw new Error(`分块上传失败: ${result.message}`);
+                        }
+                        
+                        fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+                        updateFileList();
+                    }
+                    
+                    // 完成上传
+                    const completeData = {
+                        action: 'complete_upload',
+                        fileName: fileData.file.name,
+                        fingerprint: fileData.fingerprint,
+                        totalChunks: totalChunks,
+                        fileSize: fileSize,
+                        gpsLatitude: fileData.fileInfo.latitude,
+                        gpsLongitude: fileData.fileInfo.longitude
+                    };
+                    
+                    if (fileData.fileInfo.earliestTime) {
+                        completeData.earliestTime = fileData.fileInfo.earliestTime;
+                    }
+                    
+                    const completeResult = await callCloudFunction(completeData, signal);
+                    
+                    if (!completeResult.success) {
+                        throw new Error('文件合并失败: ' + completeResult.message);
+                    }
+                    
+                    fileData.status = 'completed';
+                    fileData.fileId = completeResult.fileID;
+                    updateFileList();
+                    
+                    return completeResult;
+                    
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        fileData.status = 'cancelled';
+                        fileData.error = '上传已取消';
+                        updateFileList();
+                        throw error;
+                    }
+                    
+                    retryCount++;
+                    
+                    if (retryCount > CONFIG.MAX_RETRIES) {
+                        fileData.status = 'error';
+                        fileData.error = `上传失败: ${error.message}`;
+                        updateFileList();
+                        throw error;
+                    } else {
+                        console.warn(`文件 ${fileData.file.name} 上传失败，第 ${retryCount} 次重试...`);
+                        fileData.progress = 0;
+                        updateFileList();
+                        
+                        // 等待一段时间后重试
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                    }
+                }
+            }
+        }
+
+        // 生成文件指纹
+        async function generateFileFingerprint(file) {
+            return new Promise((resolve) => {
+                const spark = new SparkMD5.ArrayBuffer();
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    spark.append(e.target.result);
+                    const hash = spark.end();
+                    resolve(hash);
+                };
+                
+                reader.onerror = () => {
+                    const backupHash = 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    resolve(backupHash);
+                };
+                
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 读取分块为Base64
+        function readChunkAsBase64(chunk) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataURL = reader.result;
+                    const base64Data = dataURL.split(',')[1];
+                    resolve(base64Data);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(chunk);
+            });
+        }
+
+        // 调用云函数
+        async function callCloudFunction(data, signal) {
+            try {
+                const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Referer': 'https://album-70p.pages.dev'
+                    },
+                    body: JSON.stringify(data),
+                    signal: signal
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                return result;
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    throw error;
+                }
+                
+                return {
+                    success: false,
+                    message: '网络请求失败: ' + error.message
+                };
+            }
+        }
+
+        // 检查服务状态
+        async function checkServiceStatus() {
+            try {
+                const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Referer': 'https://album-70p.pages.dev'
+                    },
+                    body: JSON.stringify({
+                        action: 'health_check'
+                    })
+                });
+                
+                if (response.ok) {
+                    elements.serviceStatus.textContent = '✅ 服务正常';
+                    elements.serviceStatus.style.background = '#e8f5e8';
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                elements.serviceStatus.textContent = '❌ 服务连接失败';
+                elements.serviceStatus.style.background = '#f8d7da';
+            }
+        }
+
+        // 清空文件
+        function clearFiles() {
+            if (!uploadInProgress) {
+                // 取消当前上传
+                if (currentUploadController) {
+                    currentUploadController.abort();
+                    currentUploadController = null;
+                }
+                
+                selectedFiles = [];
+                updateFileList();
+                updateUploadButton();
+                updateStats();
+                elements.resultInfo.style.display = 'none';
+            } else {
+                alert('上传进行中，请等待完成后清空');
+            }
+        }
+
+        // 显示结果
+        function showResult(success, error) {
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const withAddressCount = visibleFiles.filter(f => f.fileInfo.hasGPS).length;
+            
+            elements.resultContent.innerHTML = `
+                <div>
+                    <div>✅ 成功上传: ${success} 个文件</div>
+                    <div>❌ 上传失败: ${error} 个文件</div>
+                    <div>📍 含地址信息: ${withAddressCount} 个文件</div>
+                    ${error > 0 ? '<div style="color: #dc3545; margin-top: 10px;">请检查网络连接后重试失败的文件</div>' : ''}
+                </div>
+            `;
+            elements.resultInfo.style.display = 'block';
+        }
+
+        // 设置拖拽上传
+        function setupDragAndDrop() {
+            elements.uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                elements.uploadArea.classList.add('active');
+            });
+
+            elements.uploadArea.addEventListener('dragleave', () => {
+                elements.uploadArea.classList.remove('active');
+            });
+
+            elements.uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                elements.uploadArea.classList.remove('active');
+                if (e.dataTransfer.files.length) {
+                    elements.fileInput.files = e.dataTransfer.files;
+                    handleFileSelect({ target: elements.fileInput });
+                }
+            });
+        }
 
         // 启动应用
         document.addEventListener('DOMContentLoaded', init);
