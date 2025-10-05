@@ -306,7 +306,11 @@
             <div class="upload-icon">📷</div>
             <div class="upload-text">点击选择照片</div>
             <div class="upload-hint">支持JPG、PNG等格式</div>
-            <input type="file" id="file-input" accept="image/*" multiple>
+            <!-- 修改这里：使用 capture 和 accept 属性 -->
+            <input type="file" id="file-input" 
+                   accept="image/*" 
+                   multiple 
+                   capture="environment">
         </div>
         
         <div class="stats">
@@ -347,7 +351,7 @@
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
             MAX_FILES: 50,
-            CHUNK_SIZE: 50 * 1024,
+            CHUNK_SIZE: 100 * 1024,
             MAX_RETRIES: 3
         };
 
@@ -377,6 +381,9 @@
         function init() {
             initEventListeners();
             checkServiceStatus();
+            
+            // 添加点击事件来测试不同的文件选择方式
+            setupFileSelectionOptions();
         }
 
         function initEventListeners() {
@@ -399,6 +406,23 @@
             });
 
             setupDragAndDrop();
+        }
+
+        // 设置文件选择选项（用于测试）
+        function setupFileSelectionOptions() {
+            // 在移动端，我们可以动态修改 input 属性来改变选择行为
+            console.log('设备类型:', navigator.userAgent);
+            
+            // 检测移动设备
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+                console.log('检测到移动设备，优化文件选择体验');
+                
+                // 可以根据需要动态修改 input 属性
+                // elements.fileInput.setAttribute('capture', 'environment'); // 后置摄像头
+                // elements.fileInput.setAttribute('capture', 'user'); // 前置摄像头
+                // elements.fileInput.removeAttribute('capture'); // 让用户选择
+            }
         }
 
         // 文件选择处理
@@ -1004,4 +1028,3 @@
     </script>
 </body>
 </html>
-
