@@ -425,6 +425,7 @@
                         fileInfo: fileInfo
                     });
                     validFilesAdded++;
+                    console.log('文件信息:', fileInfo);
                 }
             }
             
@@ -450,7 +451,7 @@
                         // 选择最早的时间
                         const earliestTime = getEarliestTime(fileTimes);
                         
-                        // 模拟GPS信息（实际项目中应该从EXIF提取）
+                        // 模拟GPS信息
                         const hasGPS = Math.random() > 0.7; // 30%的照片有GPS
                         
                         let gpsInfo = {
@@ -470,11 +471,10 @@
                         resolve({
                             ...gpsInfo,
                             earliestTime: earliestTime,
-                            hasTime: !!earliestTime,
-                            // 调试信息，实际使用中可以移除
-                            timeSources: fileTimes
+                            hasTime: !!earliestTime
                         });
                     } catch (error) {
+                        console.error('提取文件信息失败:', error);
                         resolve({
                             hasGPS: false,
                             latitude: null,
@@ -503,27 +503,22 @@
         async function getFileTimes(file) {
             const times = {};
             
-            // 1. 文件创建时间
+            // 1. 文件最后修改时间
             if (file.lastModified) {
                 times.lastModified = new Date(file.lastModified).toISOString();
             }
             
-            // 2. 尝试从EXIF数据中获取拍摄时间
-            // 在实际项目中，这里应该使用EXIF.js库
+            // 2. 模拟EXIF拍摄时间（实际项目中使用EXIF.js）
             try {
-                // 模拟EXIF时间提取
                 const hasExifTime = Math.random() > 0.3; // 70%的照片有EXIF时间
                 if (hasExifTime) {
-                    // 模拟EXIF中的DateTimeOriginal
-                    const exifTime = new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000);
+                    // 生成一个比文件修改时间更早的时间来模拟EXIF拍摄时间
+                    const exifTime = new Date(file.lastModified - Math.random() * 365 * 24 * 60 * 60 * 1000);
                     times.exifTime = exifTime.toISOString();
                 }
             } catch (error) {
                 console.log('EXIF时间提取失败');
             }
-            
-            // 3. 文件系统创建时间（如果可用）
-            // 注意：浏览器环境下通常无法获取文件系统创建时间
             
             return times;
         }
@@ -710,7 +705,7 @@
             showResult(successCount, errorCount);
         }
 
-        // 上传单个文件
+        // 上传单个文件 - 确保包含 earliestTime
         async function uploadFile(fileData, signal) {
             const fileSize = fileData.file.size;
             const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
@@ -730,7 +725,8 @@
                 
                 const chunkBase64 = await readChunkAsBase64(chunk);
                 
-                const result = await callCloudFunction({
+                // 上传分块数据，包含 earliestTime
+                const uploadData = {
                     action: 'upload_chunk',
                     chunkIndex: chunkIndex,
                     totalChunks: totalChunks,
@@ -739,9 +735,15 @@
                     data: chunkBase64,
                     fileSize: fileSize,
                     gpsLatitude: fileData.fileInfo.latitude,
-                    gpsLongitude: fileData.fileInfo.longitude,
-                    earliestTime: fileData.fileInfo.earliestTime
-                }, signal);
+                    gpsLongitude: fileData.fileInfo.longitude
+                };
+                
+                // 只有在有最早时间时才添加该字段
+                if (fileData.fileInfo.earliestTime) {
+                    uploadData.earliestTime = fileData.fileInfo.earliestTime;
+                }
+                
+                const result = await callCloudFunction(uploadData, signal);
                 
                 if (!result.success) {
                     throw new Error(`分块上传失败: ${result.message}`);
@@ -751,16 +753,23 @@
                 updateFileList();
             }
             
-            const completeResult = await callCloudFunction({
+            // 完成上传，包含 earliestTime
+            const completeData = {
                 action: 'complete_upload',
                 fileName: fileData.file.name,
                 fingerprint: fileData.fingerprint,
                 totalChunks: totalChunks,
                 fileSize: fileSize,
                 gpsLatitude: fileData.fileInfo.latitude,
-                gpsLongitude: fileData.fileInfo.longitude,
-                earliestTime: fileData.fileInfo.earliestTime
-            }, signal);
+                gpsLongitude: fileData.fileInfo.longitude
+            };
+            
+            // 只有在有最早时间时才添加该字段
+            if (fileData.fileInfo.earliestTime) {
+                completeData.earliestTime = fileData.fileInfo.earliestTime;
+            }
+            
+            const completeResult = await callCloudFunction(completeData, signal);
             
             if (!completeResult.success) {
                 throw new Error('文件合并失败: ' + completeResult.message);
@@ -807,6 +816,7 @@
         // 调用云函数
         async function callCloudFunction(data, signal) {
             try {
+                console.log('发送到云函数的数据:', data);
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
@@ -916,4 +926,3 @@
     </script>
 </body>
 </html>
-
