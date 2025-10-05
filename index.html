@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
     <style>
+        /* 样式保持不变 */
         * { 
             margin: 0; 
             padding: 0; 
@@ -342,6 +343,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
+    <!-- 添加 EXIF.js 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script>
         // 配置信息 - 串行上传
         const CONFIG = {
@@ -439,43 +442,30 @@
             elements.fileInput.value = '';
         }
 
-        // 提取照片信息 - 获取最早时间
+        // 提取照片信息 - 修复：使用真实的EXIF数据
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
-                const reader = new FileReader();
-                
-                reader.onload = async function(e) {
+                // 使用EXIF.js来读取照片的EXIF数据
+                EXIF.getData(file, function() {
                     try {
-                        // 获取文件的多个时间信息
-                        const fileTimes = await getFileTimes(file);
+                        // 获取所有EXIF数据
+                        const allExifData = EXIF.getAllTags(this);
+                        console.log('EXIF数据:', allExifData); // 调试用
                         
-                        // 选择最早的时间
-                        const earliestTime = getEarliestTime(fileTimes);
+                        // 提取GPS信息
+                        const gpsInfo = extractGPSInfo(allExifData);
                         
-                        // 模拟GPS信息
-                        const hasGPS = Math.random() > 0.7; // 30%的照片有GPS
-                        
-                        let gpsInfo = {
-                            hasGPS: false,
-                            latitude: null,
-                            longitude: null
-                        };
-                        
-                        if (hasGPS) {
-                            gpsInfo = {
-                                hasGPS: true,
-                                latitude: 39.9042 + (Math.random() - 0.5) * 0.1,
-                                longitude: 116.4074 + (Math.random() - 0.5) * 0.1
-                            };
-                        }
+                        // 提取时间信息
+                        const timeInfo = extractTimeInfo(allExifData, file);
                         
                         resolve({
                             ...gpsInfo,
-                            earliestTime: earliestTime,
-                            hasTime: !!earliestTime
+                            ...timeInfo,
+                            // 保存原始EXIF数据用于调试
+                            rawExif: allExifData
                         });
                     } catch (error) {
-                        console.error('提取文件信息失败:', error);
+                        console.error('提取EXIF信息失败:', error);
                         resolve({
                             hasGPS: false,
                             latitude: null,
@@ -484,49 +474,119 @@
                             hasTime: false
                         });
                     }
-                };
-                
-                reader.onerror = function() {
-                    resolve({
-                        hasGPS: false,
-                        latitude: null,
-                        longitude: null,
-                        earliestTime: null,
-                        hasTime: false
-                    });
-                };
-                
-                reader.readAsArrayBuffer(file);
+                });
             });
         }
 
-        // 获取文件的所有可能时间
-        async function getFileTimes(file) {
+        // 提取GPS信息
+        function extractGPSInfo(exifData) {
+            const gpsInfo = {
+                hasGPS: false,
+                latitude: null,
+                longitude: null,
+                rawGPS: null
+            };
+            
+            // 检查是否存在GPS数据
+            if (exifData.GPSLatitude && exifData.GPSLongitude && 
+                exifData.GPSLatitudeRef && exifData.GPSLongitudeRef) {
+                
+                gpsInfo.hasGPS = true;
+                gpsInfo.rawGPS = {
+                    latitude: exifData.GPSLatitude,
+                    longitude: exifData.GPSLongitude,
+                    latitudeRef: exifData.GPSLatitudeRef,
+                    longitudeRef: exifData.GPSLongitudeRef
+                };
+                
+                // 转换GPS坐标为十进制
+                gpsInfo.latitude = convertGPSCoordinate(exifData.GPSLatitude, exifData.GPSLatitudeRef);
+                gpsInfo.longitude = convertGPSCoordinate(exifData.GPSLongitude, exifData.GPSLongitudeRef);
+                
+                console.log('提取到GPS信息:', {
+                    rawLatitude: exifData.GPSLatitude,
+                    rawLongitude: exifData.GPSLongitude,
+                    convertedLatitude: gpsInfo.latitude,
+                    convertedLongitude: gpsInfo.longitude
+                });
+            }
+            
+            return gpsInfo;
+        }
+
+        // 转换GPS坐标为十进制
+        function convertGPSCoordinate(coord, ref) {
+            if (!coord || !Array.isArray(coord) || coord.length < 3) {
+                return null;
+            }
+            
+            try {
+                // GPS坐标格式：度、分、秒
+                const degrees = coord[0];
+                const minutes = coord[1];
+                const seconds = coord[2];
+                
+                // 转换为十进制
+                let decimal = degrees + minutes / 60 + seconds / 3600;
+                
+                // 根据参考方向调整正负
+                if (ref === 'S' || ref === 'W') {
+                    decimal = -decimal;
+                }
+                
+                return decimal;
+            } catch (error) {
+                console.error('GPS坐标转换失败:', error);
+                return null;
+            }
+        }
+
+        // 提取时间信息
+        function extractTimeInfo(exifData, file) {
             const times = {};
             
-            // 1. 文件最后修改时间
+            // 1. EXIF拍摄时间（最准确）
+            if (exifData.DateTimeOriginal) {
+                times.exifTime = parseEXIFDate(exifData.DateTimeOriginal);
+            }
+            
+            // 2. EXIF创建时间
+            if (exifData.DateTime) {
+                times.exifCreateTime = parseEXIFDate(exifData.DateTime);
+            }
+            
+            // 3. 文件修改时间
             if (file.lastModified) {
                 times.lastModified = new Date(file.lastModified).toISOString();
             }
             
-            // 2. 模拟EXIF拍摄时间（实际项目中使用EXIF.js）
-            try {
-                const hasExifTime = Math.random() > 0.3; // 70%的照片有EXIF时间
-                if (hasExifTime) {
-                    // 生成一个比文件修改时间更早的时间来模拟EXIF拍摄时间
-                    const exifTime = new Date(file.lastModified - Math.random() * 365 * 24 * 60 * 60 * 1000);
-                    times.exifTime = exifTime.toISOString();
-                }
-            } catch (error) {
-                console.log('EXIF时间提取失败');
-            }
+            // 选择最早的时间
+            const earliestTime = getEarliestTime(times);
             
-            return times;
+            return {
+                earliestTime: earliestTime,
+                hasTime: !!earliestTime,
+                rawTimes: times
+            };
+        }
+
+        // 解析EXIF日期格式
+        function parseEXIFDate(dateString) {
+            try {
+                // EXIF日期格式: "YYYY:MM:DD HH:MM:SS"
+                const parts = dateString.split(' ');
+                const datePart = parts[0].replace(/:/g, '-');
+                const timePart = parts[1];
+                return new Date(datePart + 'T' + timePart).toISOString();
+            } catch (error) {
+                console.error('解析EXIF日期失败:', error);
+                return null;
+            }
         }
 
         // 从多个时间中选择最早的一个
         function getEarliestTime(timeObj) {
-            const validTimes = Object.values(timeObj).filter(time => time);
+            const validTimes = Object.values(timeObj).filter(time => time && time !== 'Invalid Date');
             
             if (validTimes.length === 0) {
                 return null;
@@ -543,7 +603,7 @@
             return earliestDate.toISOString();
         }
 
-        // 更新文件列表 - 修改：已取消的文件不显示
+        // 更新文件列表 - 修改：显示GPS信息
         function updateFileList() {
             // 只显示未取消的文件
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
@@ -564,6 +624,11 @@
                 const timeInfo = fileData.fileInfo.hasTime ? 
                     `<div class="file-meta">📅 ${new Date(fileData.fileInfo.earliestTime).toLocaleDateString()}</div>` : 
                     `<div class="file-meta">⏰ 无时间信息</div>`;
+                
+                // GPS信息显示
+                const gpsInfo = fileData.fileInfo.hasGPS ? 
+                    `<div class="file-meta">📍 有GPS信息 (${fileData.fileInfo.latitude?.toFixed(6)}, ${fileData.fileInfo.longitude?.toFixed(6)})</div>` : 
+                    `<div class="file-meta">📍 无GPS信息</div>`;
                 
                 // 文件大小
                 const sizeInfo = `<div class="file-meta">📦 ${formatFileSize(fileData.file.size)}</div>`;
@@ -587,6 +652,7 @@
                     <div class="file-info">
                         <div class="file-name">${fileData.file.name}</div>
                         ${timeInfo}
+                        ${gpsInfo}
                         ${sizeInfo}
                         ${errorInfo}
                         ${progressBar}
@@ -604,6 +670,7 @@
             attachCancelButtonListeners();
         }
 
+        // 其余函数保持不变...
         // 更新统计信息 - 修改：不统计已取消的文件
         function updateStats() {
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
@@ -1004,4 +1071,3 @@
     </script>
 </body>
 </html>
-
