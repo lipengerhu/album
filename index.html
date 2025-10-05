@@ -343,19 +343,19 @@
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
     <script>
-        // 配置信息
+        // 配置信息 - 串行上传
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
             MAX_FILES: 50,
-            CHUNK_SIZE: 50 * 1024,
-            MAX_RETRIES: 3,
-            MAX_PARALLEL_UPLOADS: 3 // 同时上传的文件数量
+            CHUNK_SIZE: 100 * 1024,
+            MAX_RETRIES: 3
         };
 
         // 状态管理
         let selectedFiles = [];
         let uploadInProgress = false;
-        let uploadControllers = new Map(); // 改为Map来管理多个文件的控制器
+        let currentUploadController = null;
+        let currentUploadIndex = 0;
 
         // DOM元素
         const elements = {
@@ -543,9 +543,12 @@
             return earliestDate.toISOString();
         }
 
-        // 更新文件列表 - 修改：取消上传后隐藏进度条
+        // 更新文件列表 - 修改：已取消的文件不显示
         function updateFileList() {
-            if (selectedFiles.length === 0) {
+            // 只显示未取消的文件
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            
+            if (visibleFiles.length === 0) {
                 elements.fileList.innerHTML = '<div class="empty-state">暂无照片</div>';
                 elements.emptyState.style.display = 'block';
                 return;
@@ -553,7 +556,7 @@
             
             elements.emptyState.style.display = 'none';
             
-            elements.fileList.innerHTML = selectedFiles.map((fileData) => {
+            elements.fileList.innerHTML = visibleFiles.map((fileData) => {
                 const errorInfo = fileData.error ? 
                     `<div style="color: #dc3545; font-size: 12px; margin-top: 6px;">错误: ${fileData.error}</div>` : '';
                 
@@ -601,14 +604,15 @@
             attachCancelButtonListeners();
         }
 
-        // 更新统计信息
+        // 更新统计信息 - 修改：不统计已取消的文件
         function updateStats() {
-            elements.totalFiles.textContent = selectedFiles.length;
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            elements.totalFiles.textContent = visibleFiles.length;
             
-            const withAddressCount = selectedFiles.filter(f => f.fileInfo.hasGPS).length;
+            const withAddressCount = visibleFiles.filter(f => f.fileInfo.hasGPS).length;
             elements.withAddress.textContent = withAddressCount;
             
-            const totalBytes = selectedFiles.reduce((sum, fileData) => sum + fileData.file.size, 0);
+            const totalBytes = visibleFiles.reduce((sum, fileData) => sum + fileData.file.size, 0);
             elements.totalSize.textContent = (totalBytes / 1024 / 1024).toFixed(1) + 'MB';
         }
 
@@ -622,24 +626,33 @@
             });
         }
 
-        // 取消文件上传 - 修改：移除进度条
+        // 取消文件上传 - 修改：自动开始下一个文件
         function cancelFileUpload(fileName) {
             const fileData = selectedFiles.find(f => f.file.name === fileName);
             if (fileData && (fileData.status === 'uploading' || fileData.status === 'pending')) {
-                // 取消上传
-                const controller = uploadControllers.get(fileName);
-                if (controller) {
-                    controller.abort();
-                    uploadControllers.delete(fileName);
+                // 如果是当前正在上传的文件，取消上传
+                if (currentUploadController && fileData.status === 'uploading') {
+                    currentUploadController.abort();
+                    currentUploadController = null;
                 }
                 
+                // 标记为已取消
                 fileData.status = 'cancelled';
                 fileData.error = '上传已取消';
-                fileData.progress = 0; // 重置进度
+                fileData.progress = 0;
                 
+                // 更新界面
                 updateFileList();
-                updateUploadButton();
                 updateStats();
+                
+                // 如果正在上传过程中取消，自动开始下一个文件
+                if (uploadInProgress) {
+                    setTimeout(() => {
+                        continueUpload();
+                    }, 100);
+                } else {
+                    updateUploadButton();
+                }
             }
         }
 
@@ -654,8 +667,9 @@
 
         // 更新上传按钮状态
         function updateUploadButton() {
-            const hasFiles = selectedFiles.length > 0;
-            const hasPendingFiles = selectedFiles.some(f => f.status === 'pending' || f.status === 'error');
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const hasFiles = visibleFiles.length > 0;
+            const hasPendingFiles = visibleFiles.some(f => f.status === 'pending' || f.status === 'error');
             const shouldEnable = hasFiles && hasPendingFiles && !uploadInProgress;
             
             elements.startUpload.disabled = !shouldEnable;
@@ -674,67 +688,57 @@
             return statusMap[status] || status;
         }
 
-        // 开始上传 - 修改：支持并行上传
+        // 开始上传
         async function startUpload() {
             if (uploadInProgress) return;
             
-            const pendingFiles = selectedFiles.filter(f => f.status === 'pending' || f.status === 'error');
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const pendingFiles = visibleFiles.filter(f => f.status === 'pending' || f.status === 'error');
             if (pendingFiles.length === 0) return;
             
             uploadInProgress = true;
+            currentUploadIndex = 0;
             updateUploadButton();
             
-            // 并行上传文件
-            const uploadPromises = [];
-            const activeUploads = [];
-            
-            for (const fileData of pendingFiles) {
-                // 限制同时上传的文件数量
-                if (activeUploads.length >= CONFIG.MAX_PARALLEL_UPLOADS) {
-                    break;
-                }
-                
-                if (fileData.status === 'pending' || fileData.status === 'error') {
-                    const controller = new AbortController();
-                    uploadControllers.set(fileData.file.name, controller);
-                    activeUploads.push(fileData.file.name);
-                    
-                    const uploadPromise = uploadFile(fileData, controller.signal)
-                        .finally(() => {
-                            // 上传完成后从活跃列表中移除
-                            const index = activeUploads.indexOf(fileData.file.name);
-                            if (index > -1) {
-                                activeUploads.splice(index, 1);
-                            }
-                            uploadControllers.delete(fileData.file.name);
-                        });
-                    
-                    uploadPromises.push(uploadPromise);
-                }
-            }
-            
-            try {
-                await Promise.allSettled(uploadPromises);
-            } catch (error) {
-                console.error('上传过程中出错:', error);
-            }
-            
-            // 检查是否还有待上传的文件
-            const remainingFiles = selectedFiles.filter(f => f.status === 'pending' || f.status === 'error');
-            if (remainingFiles.length > 0) {
-                // 如果还有待上传的文件，继续上传
-                setTimeout(startUpload, 100);
-            } else {
-                uploadInProgress = false;
-                updateUploadButton();
-                showResult(
-                    selectedFiles.filter(f => f.status === 'completed').length,
-                    selectedFiles.filter(f => f.status === 'error' || f.status === 'cancelled').length
-                );
-            }
+            await continueUpload();
         }
 
-        // 上传单个文件 - 确保包含 earliestTime
+        // 继续上传下一个文件
+        async function continueUpload() {
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const pendingFiles = visibleFiles.filter(f => f.status === 'pending' || f.status === 'error');
+            
+            if (pendingFiles.length === 0) {
+                // 所有文件都处理完了
+                uploadInProgress = false;
+                currentUploadController = null;
+                updateUploadButton();
+                showResult(
+                    visibleFiles.filter(f => f.status === 'completed').length,
+                    visibleFiles.filter(f => f.status === 'error').length
+                );
+                return;
+            }
+            
+            // 上传下一个文件
+            const fileData = pendingFiles[0];
+            currentUploadController = new AbortController();
+            
+            try {
+                await uploadFile(fileData, currentUploadController.signal);
+            } catch (error) {
+                console.error(`文件 ${fileData.file.name} 上传失败:`, error);
+            } finally {
+                currentUploadController = null;
+            }
+            
+            // 继续上传下一个文件
+            setTimeout(() => {
+                continueUpload();
+            }, 100);
+        }
+
+        // 上传单个文件
         async function uploadFile(fileData, signal) {
             // 更新状态为上传中
             fileData.status = 'uploading';
@@ -749,82 +753,100 @@
                 fileData.fingerprint = await generateFileFingerprint(fileData.file);
             }
             
-            try {
-                for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-                    if (signal.aborted) {
-                        throw new DOMException('上传已取消', 'AbortError');
+            let retryCount = 0;
+            
+            while (retryCount <= CONFIG.MAX_RETRIES) {
+                try {
+                    // 上传所有分块
+                    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                        if (signal.aborted) {
+                            throw new DOMException('上传已取消', 'AbortError');
+                        }
+                        
+                        const start = chunkIndex * CONFIG.CHUNK_SIZE;
+                        const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
+                        const chunk = fileData.file.slice(start, end);
+                        
+                        const chunkBase64 = await readChunkAsBase64(chunk);
+                        
+                        // 上传分块数据
+                        const uploadData = {
+                            action: 'upload_chunk',
+                            chunkIndex: chunkIndex,
+                            totalChunks: totalChunks,
+                            fileName: fileData.file.name,
+                            fingerprint: fileData.fingerprint,
+                            data: chunkBase64,
+                            fileSize: fileSize,
+                            gpsLatitude: fileData.fileInfo.latitude,
+                            gpsLongitude: fileData.fileInfo.longitude
+                        };
+                        
+                        if (fileData.fileInfo.earliestTime) {
+                            uploadData.earliestTime = fileData.fileInfo.earliestTime;
+                        }
+                        
+                        const result = await callCloudFunction(uploadData, signal);
+                        
+                        if (!result.success) {
+                            throw new Error(`分块上传失败: ${result.message}`);
+                        }
+                        
+                        fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+                        updateFileList();
                     }
                     
-                    const start = chunkIndex * CONFIG.CHUNK_SIZE;
-                    const end = Math.min((chunkIndex + 1) * CONFIG.CHUNK_SIZE, fileSize);
-                    const chunk = fileData.file.slice(start, end);
-                    
-                    const chunkBase64 = await readChunkAsBase64(chunk);
-                    
-                    // 上传分块数据，包含 earliestTime
-                    const uploadData = {
-                        action: 'upload_chunk',
-                        chunkIndex: chunkIndex,
-                        totalChunks: totalChunks,
+                    // 完成上传
+                    const completeData = {
+                        action: 'complete_upload',
                         fileName: fileData.file.name,
                         fingerprint: fileData.fingerprint,
-                        data: chunkBase64,
+                        totalChunks: totalChunks,
                         fileSize: fileSize,
                         gpsLatitude: fileData.fileInfo.latitude,
                         gpsLongitude: fileData.fileInfo.longitude
                     };
                     
-                    // 只有在有最早时间时才添加该字段
                     if (fileData.fileInfo.earliestTime) {
-                        uploadData.earliestTime = fileData.fileInfo.earliestTime;
+                        completeData.earliestTime = fileData.fileInfo.earliestTime;
                     }
                     
-                    const result = await callCloudFunction(uploadData, signal);
+                    const completeResult = await callCloudFunction(completeData, signal);
                     
-                    if (!result.success) {
-                        throw new Error(`分块上传失败: ${result.message}`);
+                    if (!completeResult.success) {
+                        throw new Error('文件合并失败: ' + completeResult.message);
                     }
                     
-                    fileData.progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+                    fileData.status = 'completed';
+                    fileData.fileId = completeResult.fileID;
                     updateFileList();
+                    
+                    return completeResult;
+                    
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        fileData.status = 'cancelled';
+                        fileData.error = '上传已取消';
+                        updateFileList();
+                        throw error;
+                    }
+                    
+                    retryCount++;
+                    
+                    if (retryCount > CONFIG.MAX_RETRIES) {
+                        fileData.status = 'error';
+                        fileData.error = `上传失败: ${error.message}`;
+                        updateFileList();
+                        throw error;
+                    } else {
+                        console.warn(`文件 ${fileData.file.name} 上传失败，第 ${retryCount} 次重试...`);
+                        fileData.progress = 0;
+                        updateFileList();
+                        
+                        // 等待一段时间后重试
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                    }
                 }
-                
-                // 完成上传，包含 earliestTime
-                const completeData = {
-                    action: 'complete_upload',
-                    fileName: fileData.file.name,
-                    fingerprint: fileData.fingerprint,
-                    totalChunks: totalChunks,
-                    fileSize: fileSize,
-                    gpsLatitude: fileData.fileInfo.latitude,
-                    gpsLongitude: fileData.fileInfo.longitude
-                };
-                
-                // 只有在有最早时间时才添加该字段
-                if (fileData.fileInfo.earliestTime) {
-                    completeData.earliestTime = fileData.fileInfo.earliestTime;
-                }
-                
-                const completeResult = await callCloudFunction(completeData, signal);
-                
-                if (!completeResult.success) {
-                    throw new Error('文件合并失败: ' + completeResult.message);
-                }
-                
-                fileData.status = 'completed';
-                fileData.fileId = completeResult.fileID;
-                updateFileList();
-                
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    fileData.status = 'cancelled';
-                    fileData.error = '上传已取消';
-                } else {
-                    fileData.status = 'error';
-                    fileData.error = error.message;
-                }
-                updateFileList();
-                throw error;
             }
         }
 
@@ -924,11 +946,11 @@
         // 清空文件
         function clearFiles() {
             if (!uploadInProgress) {
-                // 取消所有进行中的上传
-                uploadControllers.forEach(controller => {
-                    controller.abort();
-                });
-                uploadControllers.clear();
+                // 取消当前上传
+                if (currentUploadController) {
+                    currentUploadController.abort();
+                    currentUploadController = null;
+                }
                 
                 selectedFiles = [];
                 updateFileList();
@@ -942,7 +964,8 @@
 
         // 显示结果
         function showResult(success, error) {
-            const withAddressCount = selectedFiles.filter(f => f.fileInfo.hasGPS).length;
+            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
+            const withAddressCount = visibleFiles.filter(f => f.fileInfo.hasGPS).length;
             
             elements.resultContent.innerHTML = `
                 <div>
