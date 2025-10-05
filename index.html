@@ -650,8 +650,8 @@
                 
                 // GPS信息显示
                 const gpsInfo = fileData.fileInfo.hasGPS ? 
-                    `<div class="file-meta">📍 有GPS信息 (${fileData.fileInfo.latitude?.toFixed(6)}, ${fileData.fileInfo.longitude?.toFixed(6)})</div>` : 
-                    `<div class="file-meta">📍 无GPS信息</div>`;
+                    `<div class="file-meta">📍 有地址信息</div>` : 
+                    `<div class="file-meta">📍 无地址信息</div>`;
                 
                 // 文件大小
                 const sizeInfo = `<div class="file-meta">📦 ${formatFileSize(fileData.file.size)}</div>`;
@@ -1098,3 +1098,4 @@
     </script>
 </body>
 </html>
+
