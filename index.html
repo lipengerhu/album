@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -80,7 +81,7 @@
             color: #7f8c8d;
         }
         
-        .file-inputs { 
+        #file-input { 
             display: none; 
         }
         
@@ -268,78 +269,6 @@
             margin-left: 12px;
         }
 
-        /* 自定义选择对话框样式 */
-        .mobile-options-dialog {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            display: flex;
-            align-items: flex-end;
-            z-index: 10000;
-        }
-        
-        .mobile-options-content {
-            background: white;
-            width: 100%;
-            border-radius: 16px 16px 0 0;
-            padding: 20px;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .mobile-options-title {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
-        .mobile-options-title h3 {
-            margin: 0 0 10px 0;
-            color: #333;
-        }
-        
-        .mobile-options-title p {
-            margin: 0;
-            color: #666;
-            font-size: 14px;
-        }
-        
-        .mobile-option-btn {
-            width: 100%;
-            border: none;
-            padding: 16px;
-            border-radius: 12px;
-            margin-bottom: 12px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .mobile-option-btn:active {
-            transform: scale(0.98);
-        }
-        
-        .camera-btn {
-            background: #4CAF50;
-            color: white;
-        }
-        
-        .gallery-btn {
-            background: #2196F3;
-            color: white;
-        }
-        
-        .file-btn {
-            background: #FF9800;
-            color: white;
-        }
-        
-        .cancel-btn-dialog {
-            background: #f8f9fa;
-            color: #666;
-        }
-
         @media (max-width: 380px) {
             .container {
                 padding: 16px;
@@ -378,13 +307,11 @@
             <div class="upload-icon">📷</div>
             <div class="upload-text">点击选择照片</div>
             <div class="upload-hint">支持JPG、PNG等格式</div>
-            
-            <!-- 多个独立的文件输入框 -->
-            <div class="file-inputs">
-                <input type="file" id="camera-input" accept="image/*" capture="camera">
-                <input type="file" id="gallery-input" accept="image/*" multiple>
-                <input type="file" id="file-input" accept="*/*" multiple>
-            </div>
+            <!-- 修改这里：使用 capture 和 accept 属性 -->
+            <input type="file" id="file-input" 
+                   accept="image/*" 
+                   multiple 
+                   capture="environment">
         </div>
         
         <div class="stats">
@@ -438,8 +365,6 @@
         // DOM元素
         const elements = {
             fileInput: document.getElementById('file-input'),
-            cameraInput: document.getElementById('camera-input'),
-            galleryInput: document.getElementById('gallery-input'),
             uploadArea: document.getElementById('upload-area'),
             fileList: document.getElementById('file-list'),
             emptyState: document.getElementById('empty-state'),
@@ -457,23 +382,19 @@
         function init() {
             initEventListeners();
             checkServiceStatus();
+            
+            // 添加点击事件来测试不同的文件选择方式
+            setupFileSelectionOptions();
         }
 
         function initEventListeners() {
-            // 修改：使用更简单的方式
             elements.uploadArea.addEventListener('click', function() {
-                if (isMobileDevice()) {
-                    showMobileFileOptions();
-                } else {
-                    // 桌面端直接触发相册选择
-                    triggerFileInput(elements.galleryInput);
-                }
+                elements.fileInput.click();
             });
 
-            // 为所有文件输入框添加change事件
-            elements.cameraInput.addEventListener('change', handleFileSelect);
-            elements.galleryInput.addEventListener('change', handleFileSelect);
-            elements.fileInput.addEventListener('change', handleFileSelect);
+            elements.fileInput.addEventListener('change', function(e) {
+                handleFileSelect(e);
+            });
 
             elements.startUpload.addEventListener('click', function() {
                 if (!elements.startUpload.disabled && !uploadInProgress) {
@@ -488,86 +409,31 @@
             setupDragAndDrop();
         }
 
-        // 检测移动设备
-        function isMobileDevice() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        }
-
-        // 触发文件输入框点击
-        function triggerFileInput(inputElement) {
-            // 使用最简单直接的方式
-            inputElement.click();
-        }
-
-        // 显示移动端文件选择选项
-        function showMobileFileOptions() {
-            // 创建自定义选择对话框
-            const optionsDialog = document.createElement('div');
-            optionsDialog.className = 'mobile-options-dialog';
+        // 设置文件选择选项（用于测试）
+        function setupFileSelectionOptions() {
+            // 在移动端，我们可以动态修改 input 属性来改变选择行为
+            console.log('设备类型:', navigator.userAgent);
             
-            const optionsContent = document.createElement('div');
-            optionsContent.className = 'mobile-options-content';
-            
-            optionsContent.innerHTML = `
-                <div class="mobile-options-title">
-                    <h3>选择照片来源</h3>
-                    <p>请选择您要上传照片的方式</p>
-                </div>
-                <button class="mobile-option-btn camera-btn" id="camera-option">📷 拍照</button>
-                <button class="mobile-option-btn gallery-btn" id="gallery-option">🖼️ 从相册选择</button>
-                <button class="mobile-option-btn file-btn" id="file-option">📁 从文件选择</button>
-                <button class="mobile-option-btn cancel-btn-dialog" id="cancel-option">取消</button>
-            `;
-            
-            optionsDialog.appendChild(optionsContent);
-            document.body.appendChild(optionsDialog);
-            
-            // 添加事件监听
-            document.getElementById('camera-option').addEventListener('click', function() {
-                console.log('选择拍照');
-                triggerFileInput(elements.cameraInput);
-                document.body.removeChild(optionsDialog);
-            });
-            
-            document.getElementById('gallery-option').addEventListener('click', function() {
-                console.log('选择相册');
-                triggerFileInput(elements.galleryInput);
-                document.body.removeChild(optionsDialog);
-            });
-            
-            document.getElementById('file-option').addEventListener('click', function() {
-                console.log('选择文件');
-                triggerFileInput(elements.fileInput);
-                document.body.removeChild(optionsDialog);
-            });
-            
-            document.getElementById('cancel-option').addEventListener('click', function() {
-                document.body.removeChild(optionsDialog);
-            });
-            
-            // 点击背景关闭
-            optionsDialog.addEventListener('click', function(e) {
-                if (e.target === optionsDialog) {
-                    document.body.removeChild(optionsDialog);
-                }
-            });
+            // 检测移动设备
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+                console.log('检测到移动设备，优化文件选择体验');
+                
+                // 可以根据需要动态修改 input 属性
+                // elements.fileInput.setAttribute('capture', 'environment'); // 后置摄像头
+                // elements.fileInput.setAttribute('capture', 'user'); // 前置摄像头
+                // elements.fileInput.removeAttribute('capture'); // 让用户选择
+            }
         }
 
         // 文件选择处理
         async function handleFileSelect(e) {
-            console.log('文件选择事件触发', e.target.id, e.target.files);
             const files = Array.from(e.target.files);
             if (files.length === 0) return;
             
             let validFilesAdded = 0;
             
             for (const file of files) {
-                // 检查文件类型
-                if (!file.type.startsWith('image/')) {
-                    alert('请选择图片文件！');
-                    continue;
-                }
-                
                 const existingFile = selectedFiles.find(f => 
                     f.file.name === file.name && f.file.size === file.size
                 );
@@ -583,8 +449,7 @@
                         fingerprint: null,
                         fileId: null,
                         error: null,
-                        fileInfo: fileInfo,
-                        source: e.target.id // 记录来源
+                        fileInfo: fileInfo
                     });
                     validFilesAdded++;
                 }
@@ -594,11 +459,9 @@
                 updateFileList();
                 updateUploadButton();
                 updateStats();
-                console.log(`成功添加 ${validFilesAdded} 个文件`);
             }
             
-            // 清空输入框值，允许重复选择相同文件
-            e.target.value = '';
+            elements.fileInput.value = '';
         }
 
         // 提取照片信息 - 获取最早时间
@@ -705,7 +568,7 @@
             return earliestDate.toISOString();
         }
 
-        // 更新文件列表
+        // 更新文件列表 - 修改：已取消的文件不显示
         function updateFileList() {
             // 只显示未取消的文件
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
@@ -766,7 +629,7 @@
             attachCancelButtonListeners();
         }
 
-        // 更新统计信息
+        // 更新统计信息 - 修改：不统计已取消的文件
         function updateStats() {
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
             elements.totalFiles.textContent = visibleFiles.length;
@@ -788,7 +651,7 @@
             });
         }
 
-        // 取消文件上传
+        // 取消文件上传 - 修改：自动开始下一个文件
         function cancelFileUpload(fileName) {
             const fileData = selectedFiles.find(f => f.file.name === fileName);
             if (fileData && (fileData.status === 'uploading' || fileData.status === 'pending')) {
@@ -1155,11 +1018,8 @@
                 e.preventDefault();
                 elements.uploadArea.classList.remove('active');
                 if (e.dataTransfer.files.length) {
-                    // 使用相册输入框来处理拖拽的文件
-                    const dataTransfer = new DataTransfer();
-                    Array.from(e.dataTransfer.files).forEach(file => dataTransfer.items.add(file));
-                    elements.galleryInput.files = dataTransfer.files;
-                    handleFileSelect({ target: elements.galleryInput });
+                    elements.fileInput.files = e.dataTransfer.files;
+                    handleFileSelect({ target: elements.fileInput });
                 }
             });
         }
