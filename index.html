@@ -4,22 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
-<script>
-        // 立即执行的token验证
+  <script>
+        // 最严格的token验证
         (function() {
             'use strict';
             
+            // 立即检查token
             const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
             
             if (!token) {
-                // 彻底清除当前文档并重写
-                document.documentElement.innerHTML = '';
-                document.write(`
+                // 使用location.replace完全替换当前页面
+                const errorPage = `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>访问被拒绝</title>
+    <title>页面不存在</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
@@ -52,18 +52,20 @@
 </head>
 <body>
     <div class="error-container">
-        <h1>访问被拒绝</h1>
-        <p>请使用正确的上传链接访问此页面</p>
+        <h1>页面不存在</h1>
+        <p>请使用正确的上传链接访问</p>
         <p style="font-size: 14px; color: #999; margin-top: 20px;">
             如需上传照片，请在小程序中生成专属链接
         </p>
     </div>
 </body>
-</html>
-                `);
+</html>`;
+                
+                // 创建新文档并完全替换
+                document.open();
+                document.write(errorPage);
                 document.close();
-                // 阻止任何后续执行
-                throw new Error('Access denied: token required');
+                return;
             }
             
             window.uploadToken = token;
@@ -1266,4 +1268,5 @@
     </script>
 </body>
 </html>
+
 
