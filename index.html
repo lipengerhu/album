@@ -4,6 +4,91 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
+    <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>照片上传</title>
+
+    <script>
+        // 强制清除缓存并验证token
+        (function() {
+            'use strict';
+            
+            // 强制清除缓存
+            if (window.performance && window.performance.navigation && window.performance.navigation.type === 1) {
+                // 页面是通过刷新访问的
+                window.location.replace(window.location.href + '?t=' + Date.now());
+            }
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            
+            if (!token) {
+                // 完全重写整个页面
+                document.documentElement.style.display = 'none';
+                
+                const errorHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>访问被拒绝</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .error-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+        }
+        h1 {
+            color: #e74c3c;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1>访问被拒绝</h1>
+        <p>此页面需要有效的访问令牌</p>
+        <p>请使用正确的上传链接访问</p>
+        <p style="font-size: 14px; color: #999; margin-top: 20px;">
+            如需上传照片，请在小程序中生成专属链接
+        </p>
+    </div>
+</body>
+</html>`;
+                
+                // 使用新文档替换当前文档
+                document.open('text/html', 'replace');
+                document.write(errorHTML);
+                document.close();
+                return;
+            }
+            
+            window.uploadToken = token;
+        })();
+    </script>
     <style>
         * { 
             margin: 0; 
@@ -290,74 +375,7 @@
             }
         }
     </style>
-<script>
-        // Token验证 - 在页面加载前执行
-        (function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const token = urlParams.get('token');
-            
-            if (!token) {
-                // 阻止后续内容加载
-                document.addEventListener('DOMContentLoaded', function() {
-                    document.body.innerHTML = '';
-                    document.head.innerHTML = '';
-                });
-                
-                // 完全重写文档
-                document.write(`<!DOCTYPE html>
-<html>
-<head>
-    <title>页面不存在</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f5f5;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-        .error-container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-            max-width: 400px;
-        }
-        h1 {
-            color: #e74c3c;
-            margin-bottom: 20px;
-            font-size: 24px;
-        }
-        p {
-            color: #666;
-            line-height: 1.6;
-            margin-bottom: 10px;
-        }
-    </style>
-</head>
-<body>
-    <div class="error-container">
-        <h1>页面不存在</h1>
-        <p>请使用正确的上传链接访问</p>
-        <p style="font-size: 14px; color: #999; margin-top: 20px;">
-            如需上传照片，请在小程序中生成专属链接
-        </p>
-    </div>
-</body>
-</html>`);
-                document.close();
-                return;
-            }
-            
-            // 保存token供后续使用
-            window.uploadToken = token;
-        })();
-    </script>
+
 </head>
 <body>
     <div class="container">
@@ -1277,3 +1295,4 @@
     </script>
 </body>
 </html>
+
