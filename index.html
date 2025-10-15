@@ -4,188 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
-
-    <script>
-        // 强制清除缓存并验证token
-        (function() {
-            'use strict';
-            
-            // 强制清除缓存
-            if (window.performance && window.performance.navigation && window.performance.navigation.type === 1) {
-                // 页面是通过刷新访问的
-                window.location.replace(window.location.href + '?t=' + Date.now());
-            }
-            
-            const urlParams = new URLSearchParams(window.location.search);
-            const token = urlParams.get('token');
-            
-            if (!token) {
-                // 完全重写整个页面
-                document.documentElement.style.display = 'none';
-                
-                const errorHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>访问被拒绝</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-        .error-container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-            max-width: 400px;
-        }
-        h1 {
-            color: #e74c3c;
-            margin-bottom: 20px;
-            font-size: 24px;
-        }
-        p {
-            color: #666;
-            line-height: 1.6;
-            margin-bottom: 10px;
-        }
-    </style>
-</head>
-<body>
-    <div class="error-container">
-        <h1>访问被拒绝</h1>
-       
-        <p style="font-size: 14px; color: #999; margin-top: 20px;">
-            如需上传照片，请在小程序中生成专属链接
-        </p>
-    </div>
-</body>
-</html>`;
-                
-                // 使用新文档替换当前文档
-                document.open('text/html', 'replace');
-                document.write(errorHTML);
-                document.close();
-                return;
-            }
-            
-            window.uploadToken = token;
-        })();
-    </script>
-
-    <style>
-        /* 原有的CSS样式 */
-        * { 
-            margin: 0; 
-            padding: 0; 
-            box-sizing: border-box; 
-        }
-        
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-            background: #f8f9fa;
-            min-height: 100vh; 
-            padding: 16px; 
-            color: #333;
-            line-height: 1.5;
-        }
-        
-        .container { 
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-            padding: 20px;
-            width: 100%; 
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        
-        /* ... 其余CSS样式保持不变 ... */
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>照片上传</h1>
-            <p class="subtitle">自动提取照片信息和位置</p>
-        </div>
-        
-        <div class="service-status" id="service-status">
-            检查服务状态...
-        </div>
-        
-        <div class="upload-area" id="upload-area">
-            <div class="upload-icon">📷</div>
-            <div class="upload-text">点击选择照片</div>
-            <div class="upload-hint">支持JPG、PNG等格式，自动提取GPS和EXIF信息</div>
-            <input type="file" id="file-input" accept="image/*" multiple>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-value" id="total-files">0</div>
-                <div class="stat-label">总文件</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value" id="with-address">0</div>
-                <div class="stat-label">含地址信息</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value" id="total-size">0MB</div>
-                <div class="stat-label">总大小</div>
-            </div>
-        </div>
-        
-        <div class="file-list" id="file-list">
-            <div class="empty-state" id="empty-state">
-                暂无照片
-            </div>
-        </div>
-        
-        <div class="controls">
-            <button class="btn" id="start-upload" disabled>开始上传</button>
-            <button class="btn btn-clear" id="clear-files">清空列表</button>
-        </div>
-        
-        <div class="result-info" id="result-info">
-            <div class="result-title">上传结果</div>
-            <div id="result-content"></div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
-    <script>
-        // 在JavaScript开始处再次验证token
-        if (!window.uploadToken) {
-            alert('无效的访问令牌，请使用正确的链接访问');
-            window.location.href = 'about:blank';
-            throw new Error('Invalid token');
-        }
-
-        // 原有的JavaScript代码...
-        const CONFIG = {
-            CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
-            MAX_FILES: 50,
-            CHUNK_SIZE: 50 * 1024,
-            MAX_RETRIES: 3
-        };
-
-        // ... 其余JavaScript代码保持不变 ...
-    </script>
-</body>
-</html>
-
     <style>
         * { 
             margin: 0; 
@@ -472,6 +290,68 @@
             }
         }
     </style>
+<script>
+        // Token验证 - 在页面加载前执行
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            
+            if (!token) {
+                document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>页面不存在</title>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <style>
+                            body {
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                                background: #f5f5f5;
+                                margin: 0;
+                                padding: 20px;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                min-height: 100vh;
+                            }
+                            .error-container {
+                                background: white;
+                                padding: 40px;
+                                border-radius: 10px;
+                                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                                text-align: center;
+                                max-width: 400px;
+                            }
+                            h1 {
+                                color: #e74c3c;
+                                margin-bottom: 20px;
+                                font-size: 24px;
+                            }
+                            p {
+                                color: #666;
+                                line-height: 1.6;
+                                margin-bottom: 10px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="error-container">
+                            <h1>页面不存在</h1>
+                            <p>请使用正确的上传链接访问</p>
+                            <p style="font-size: 14px; color: #999; margin-top: 20px;">
+                                如需上传照片，请在小程序中生成专属链接
+                            </p>
+                        </div>
+                    </body>
+                    </html>
+                `);
+                throw new Error('Invalid access: token required');
+            }
+            
+            // 保存token供后续使用
+            window.uploadToken = token;
+        })();
+    </script>
 </head>
 <body>
     <div class="container">
@@ -524,6 +404,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
+    <!-- 添加 EXIF.js 库 -->
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script>
         // 配置信息 - 串行上传
@@ -1382,7 +1263,3 @@
     </script>
 </body>
 </html>
-
-
-
-
