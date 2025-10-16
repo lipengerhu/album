@@ -458,7 +458,7 @@
             await verifyToken();
         });
 
-        // 验证token函数
+        // 验证token函数 - 关键修改：添加Referer头
         async function verifyToken() {
             try {
                 // 从URL获取token
@@ -472,12 +472,12 @@
 
                 console.log('开始验证token:', token);
 
-                // 调用云函数验证token
+                // 调用云函数验证token - 添加Referer头
                 const response = await fetch(CONFIG.TOKEN_VERIFY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Referer': 'https://album-70p.pages.dev'
+                        'Referer': 'https://album-70p.pages.dev'  // 关键：添加Referer头
                     },
                     body: JSON.stringify({
                         verifyToken: token
@@ -585,7 +585,7 @@
             elements.fileInput.value = '';
         }
 
-        // 提取照片信息（简化版，保持原有功能）
+        // 提取照片信息
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
                 EXIF.getData(file, function() {
@@ -629,7 +629,6 @@
             });
         }
 
-        // 原有的辅助函数保持不变（extractGPSInfo, extractTimeInfo, extractExifSignature, generateVisualHash等）
         function extractGPSInfo(exifData) {
             const gpsInfo = { hasGPS: false, latitude: null, longitude: null };
             if (exifData.GPSLatitude && exifData.GPSLongitude && 
@@ -926,7 +925,7 @@
             }, 100);
         }
 
-        // 上传单个文件 - 关键修改：传递userOpenid
+        // 上传单个文件 - 包含userOpenid
         async function uploadFile(fileData, signal) {
             fileData.status = 'uploading';
             fileData.error = null;
@@ -956,7 +955,7 @@
                         
                         const chunkBase64 = await readChunkAsBase64(chunk);
                         
-                        // 上传分块数据 - 关键：包含userOpenid
+                        // 上传分块数据 - 包含Referer头和userOpenid
                         const uploadData = {
                             action: 'upload_chunk',
                             chunkIndex: chunkIndex,
@@ -969,7 +968,7 @@
                             gpsLatitude: fileData.fileInfo.latitude,
                             gpsLongitude: fileData.fileInfo.longitude,
                             earliestTime: fileData.fileInfo.earliestTime,
-                            userOpenid: userOpenid  // 关键：传递验证得到的openid
+                            userOpenid: userOpenid
                         };
                         
                         const result = await callCloudFunction(uploadData, signal);
@@ -982,7 +981,7 @@
                         updateFileList();
                     }
                     
-                    // 完成上传 - 关键：包含userOpenid
+                    // 完成上传 - 包含Referer头和userOpenid
                     const completeData = {
                         action: 'complete_upload',
                         fileName: fileData.file.name,
@@ -990,7 +989,7 @@
                         combinedFingerprint: fileData.combinedFingerprint,
                         totalChunks: totalChunks,
                         fileSize: fileSize,
-                        userOpenid: userOpenid,  // 关键：传递验证得到的openid
+                        userOpenid: userOpenid,
                         gpsLatitude: fileData.fileInfo.latitude,
                         gpsLongitude: fileData.fileInfo.longitude,
                         earliestTime: fileData.fileInfo.earliestTime
@@ -1069,14 +1068,14 @@
             });
         }
 
-        // 调用云函数
+        // 调用云函数 - 关键：添加Referer头
         async function callCloudFunction(data, signal) {
             try {
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Referer': 'https://album-70p.pages.dev'
+                        'Referer': 'https://album-70p.pages.dev'  // 关键：添加Referer头
                     },
                     body: JSON.stringify(data),
                     signal: signal
@@ -1101,14 +1100,14 @@
             }
         }
 
-        // 检查服务状态
+        // 检查服务状态 - 关键：添加Referer头
         async function checkServiceStatus() {
             try {
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Referer': 'https://album-70p.pages.dev'
+                        'Referer': 'https://album-70p.pages.dev'  // 关键：添加Referer头
                     },
                     body: JSON.stringify({
                         action: 'health_check'
