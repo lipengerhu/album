@@ -39,12 +39,16 @@
                     }
                     
                     const result = await response.json();
+                    console.log('Token验证结果:', result);
                     
                     if (result.success) {
                         // token验证成功，存储openid并显示页面
                         window.userOpenid = result.openid;
                         window.uploadToken = token;
+                        // 显示页面内容
                         document.documentElement.style.display = 'block';
+                        // 初始化应用
+                        setTimeout(init, 100);
                     } else {
                         showTokenError('令牌无效', result.error || '请使用正确的上传链接');
                     }
@@ -57,7 +61,7 @@
             
             function showTokenError(title, message) {
                 // 完全重写整个页面显示错误
-                document.documentElement.innerHTML = `
+                const errorHTML = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -114,6 +118,15 @@
         .retry-btn:hover {
             background: #2980b9;
         }
+        .debug-info {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #666;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -125,9 +138,17 @@
             如需上传照片，请在小程序中生成专属链接
         </p>
         <button class="retry-btn" onclick="location.reload()">重试</button>
+        <div class="debug-info">
+            <strong>调试信息:</strong><br>
+            URL: ${window.location.href}<br>
+            Token: ${token || '未提供'}<br>
+            时间: ${new Date().toLocaleString()}
+        </div>
     </div>
 </body>
 </html>`;
+                
+                document.write(errorHTML);
                 document.close();
             }
         })();
@@ -495,8 +516,11 @@
 
         // 初始化函数 - 只在token验证通过后执行
         function init() {
+            console.log('初始化上传页面，用户:', window.userOpenid, 'Token:', window.uploadToken);
+            
             if (!window.uploadToken || !window.userOpenid) {
                 console.error('Token验证未通过，无法初始化页面');
+                alert('Token验证失败，请重新生成链接');
                 return;
             }
 
@@ -531,6 +555,11 @@
         }
 
         function initEventListeners() {
+            if (!elements.uploadArea || !elements.fileInput) {
+                console.error('DOM元素未正确初始化');
+                return;
+            }
+
             elements.uploadArea.addEventListener('click', () => elements.fileInput.click());
             elements.fileInput.addEventListener('change', handleFileSelect);
             elements.startUpload.addEventListener('click', startUpload);
@@ -542,6 +571,8 @@
         async function handleFileSelect(e) {
             const files = Array.from(e.target.files);
             if (files.length === 0) return;
+            
+            let validFilesAdded = 0;
             
             for (const file of files) {
                 if (selectedFiles.length >= CONFIG.MAX_FILES) break;
@@ -559,12 +590,16 @@
                         fingerprint: null,
                         fileInfo: fileInfo
                     });
+                    validFilesAdded++;
                 }
             }
             
-            updateFileList();
-            updateUploadButton();
-            updateStats();
+            if (validFilesAdded > 0) {
+                updateFileList();
+                updateUploadButton();
+                updateStats();
+            }
+            
             elements.fileInput.value = '';
         }
 
@@ -661,8 +696,11 @@
             
             if (visibleFiles.length === 0) {
                 elements.fileList.innerHTML = '<div class="empty-state">暂无照片</div>';
+                elements.emptyState.style.display = 'block';
                 return;
             }
+            
+            elements.emptyState.style.display = 'none';
             
             elements.fileList.innerHTML = visibleFiles.map((fileData) => {
                 const errorInfo = fileData.error ? 
@@ -755,7 +793,7 @@
             updateUploadButton();
             
             for (const fileData of pendingFiles) {
-                if (uploadInProgress) {
+                if (uploadInProgress && (fileData.status === 'pending' || fileData.status === 'error')) {
                     await uploadFile(fileData);
                 }
             }
@@ -894,8 +932,7 @@
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${window.uploadToken}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(data)
                 });
@@ -919,23 +956,28 @@
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${window.uploadToken}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         action: 'health_check',
-                        uploadToken: window.uploadToken
+                        uploadToken: window.uploadToken,
+                        userOpenid: window.userOpenid
                     })
                 });
                 
                 if (response.ok) {
-                    elements.serviceStatus.textContent = '✅ 服务正常';
-                    elements.serviceStatus.style.background = '#e8f5e8';
+                    const result = await response.json();
+                    if (result.success) {
+                        elements.serviceStatus.textContent = '✅ 服务正常';
+                        elements.serviceStatus.style.background = '#e8f5e8';
+                    } else {
+                        throw new Error(result.message);
+                    }
                 } else {
                     throw new Error(`HTTP ${response.status}`);
                 }
             } catch (error) {
-                elements.serviceStatus.textContent = '❌ 服务连接失败';
+                elements.serviceStatus.textContent = '❌ 服务连接失败: ' + error.message;
                 elements.serviceStatus.style.background = '#f8d7da';
             }
         }
@@ -947,6 +989,8 @@
                 updateUploadButton();
                 updateStats();
                 elements.resultInfo.style.display = 'none';
+            } else {
+                alert('上传进行中，请等待完成后清空');
             }
         }
 
@@ -983,13 +1027,6 @@
                     handleFileSelect({ target: elements.fileInput });
                 }
             });
-        }
-
-        // 页面加载完成后初始化
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
         }
     </script>
 </body>
