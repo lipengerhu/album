@@ -16,18 +16,33 @@
             return;
         }
         
-        // 验证签名
-        const isValid = verifySignature(timestamp, signature);
-        
-        if (!isValid) {
-            showError('链接已过期或无效', '请在小程序中重新生成上传链接');
-            return;
-        }
-        
-        // 验证成功：隐藏验证提示，显示上传页面
-        document.getElementById('verification-loading').style.display = 'none';
-        document.getElementById('upload-container').style.display = 'block';
-        console.log('验证成功，显示上传页面');
+       // 检查链接参数
+if (!timestamp || !signature) {
+    showError('访问链接无效', '请使用小程序生成的正确链接访问');
+    return;
+}
+
+// 检查链接是否已被使用
+if (isTimestampUsed(timestamp)) {
+    showError('链接已失效', '该链接已被使用，请重新生成新链接');
+    return;
+}
+
+// 验证签名
+const isValid = verifySignature(timestamp, signature);
+
+if (!isValid) {
+    showError('链接已过期或无效', '请在小程序中重新生成上传链接');
+    return;
+}
+
+// 标记链接为已使用
+markTimestampAsUsed(timestamp);
+
+// 验证成功：隐藏验证提示，显示上传页面
+document.getElementById('verification-loading').style.display = 'none';
+document.getElementById('upload-container').style.display = 'block';
+console.log('验证成功，显示上传页面');
     });
     
     function verifySignature(timestamp, receivedSignature) {
@@ -43,7 +58,21 @@
         const expectedSignature = md5(SECRET_KEY + timestamp);
         return receivedSignature === expectedSignature;
     }
+    // 在 verifySignature 函数后添加这个函数
+function isTimestampUsed(timestamp) {
+    const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
+    return usedTimestamps.includes(parseInt(timestamp));
+}
+
+// 在验证成功时标记时间戳为已使用
+function markTimestampAsUsed(timestamp) {
+    const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
+    usedTimestamps.push(parseInt(timestamp));
     
+    // 只保留最近10个时间戳，避免存储过多
+    const recentTimestamps = usedTimestamps.slice(-10);
+    localStorage.setItem('usedTimestamps', JSON.stringify(recentTimestamps));
+}
     function md5(input) {
         let hash = 0;
         for (let i = 0; i < input.length; i++) {
@@ -1294,6 +1323,7 @@
     </script>
 </body>
 </html>
+
 
 
 
