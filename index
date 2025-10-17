@@ -16,12 +16,6 @@
                 return;
             }
             
-            // 检查链接是否已被使用
-            if (isTimestampUsed(timestamp)) {
-                showError('链接已失效', '该链接已被使用，请重新生成新链接');
-                return;
-            }
-            
             // 验证签名
             const isValid = verifySignature(timestamp, signature);
             
@@ -29,9 +23,6 @@
                 showError('链接已过期或无效', '请在小程序中重新生成上传链接');
                 return;
             }
-            
-            // 标记链接为已使用
-            markTimestampAsUsed(timestamp);
             
             // 验证成功，页面正常显示
             console.log('验证成功，页面正常加载');
@@ -56,25 +47,6 @@
             });
             
             return receivedSignature === expectedSignature;
-        }
-        
-        // 检查时间戳是否已使用
-        function isTimestampUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            const isUsed = usedTimestamps.includes(parseInt(timestamp));
-            console.log('时间戳使用检查:', { timestamp, isUsed, usedTimestamps });
-            return isUsed;
-        }
-        
-        // 标记时间戳为已使用
-        function markTimestampAsUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            usedTimestamps.push(parseInt(timestamp));
-            
-            // 只保留最近20个时间戳，避免存储过多
-            const recentTimestamps = usedTimestamps.slice(-20);
-            localStorage.setItem('usedTimestamps', JSON.stringify(recentTimestamps));
-            console.log('标记时间戳为已使用:', { timestamp, recentTimestamps });
         }
         
         function md5(input) {
