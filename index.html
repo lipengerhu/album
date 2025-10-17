@@ -5,89 +5,89 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
     <script>
-        // 时间戳签名验证方案
-        (function() {
-            'use strict';
-            
-            // 显示加载中
-            document.documentElement.style.display = 'none';
-            document.body.innerHTML = `
-                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
-                        <div>正在验证访问权限...</div>
-                    </div>
+    // 时间戳签名验证方案
+    (function() {
+        'use strict';
+        
+        // 显示加载中
+        document.documentElement.style.display = 'none';
+        document.body.innerHTML = `
+            <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5;">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+                    <div>正在验证访问权限...</div>
                 </div>
-            `;
+            </div>
+        `;
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const timestamp = urlParams.get('t');
+        const signature = urlParams.get('s');
+        
+        // 验证参数是否存在
+        if (!timestamp || !signature) {
+            showTokenError('访问链接无效', '请使用小程序生成的正确链接访问');
+            return;
+        }
+        
+        try {
+            // 验证签名和时间戳
+            const isValid = verifySignature(timestamp, signature);
             
-            const urlParams = new URLSearchParams(window.location.search);
-            const timestamp = urlParams.get('t');
-            const signature = urlParams.get('s');
+            if (isValid) {
+                // 验证成功，恢复页面显示
+                document.body.innerHTML = '';
+                document.documentElement.style.display = '';
+                console.log('签名验证成功，页面正常加载');
+            } else {
+                showTokenError('链接已过期', '请在小程序中重新生成上传链接');
+            }
+        } catch (error) {
+            console.error('验证过程出错:', error);
+            showTokenError('验证失败', '请检查链接是否正确或重新生成');
+        }
+        
+        function verifySignature(timestamp, receivedSignature) {
+            // 预设密钥（定期更换）
+            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
             
-            // 验证参数是否存在
-            if (!timestamp || !signature) {
-                showTokenError('访问链接无效', '请使用小程序生成的正确链接访问');
-                return;
+            // 验证时间戳有效性（5分钟内有效）
+            const now = Math.floor(Date.now() / 1000);
+            const requestTime = parseInt(timestamp);
+            const timeDiff = Math.abs(now - requestTime);
+            
+            if (timeDiff > 300) { // 5分钟 = 300秒
+                console.log('时间戳过期:', timeDiff + '秒');
+                return false;
             }
             
-            try {
-                // 验证签名和时间戳
-                const isValid = verifySignature(timestamp, signature);
-                
-                if (isValid) {
-                    // 验证成功，恢复页面显示
-                    document.body.innerHTML = '';
-                    document.documentElement.style.display = '';
-                    console.log('签名验证成功，页面正常加载');
-                } else {
-                    showTokenError('链接已过期', '请在小程序中重新生成上传链接');
-                }
-            } catch (error) {
-                console.error('验证过程出错:', error);
-                showTokenError('验证失败', '请检查链接是否正确或重新生成');
-            }
+            // 计算期望的签名
+            const expectedSignature = md5(SECRET_KEY + timestamp);
+            console.log('签名验证:', {
+                received: receivedSignature,
+                expected: expectedSignature,
+                timestamp: timestamp,
+                timeDiff: timeDiff + '秒'
+            });
             
-            function verifySignature(timestamp, receivedSignature) {
-                // 预设密钥（定期更换）
-                const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
-                
-                // 验证时间戳有效性（5分钟内有效）
-                const now = Math.floor(Date.now() / 1000);
-                const requestTime = parseInt(timestamp);
-                const timeDiff = Math.abs(now - requestTime);
-                
-                if (timeDiff > 300) { // 5分钟 = 300秒
-                    console.log('时间戳过期:', timeDiff + '秒');
-                    return false;
-                }
-                
-                // 计算期望的签名
-                const expectedSignature = md5(SECRET_KEY + timestamp);
-                console.log('签名验证:', {
-                    received: receivedSignature,
-                    expected: expectedSignature,
-                    timestamp: timestamp,
-                    timeDiff: timeDiff + '秒'
-                });
-                
-                // 比较签名
-                return receivedSignature === expectedSignature;
+            // 比较签名
+            return receivedSignature === expectedSignature;
+        }
+        
+        // 简单的MD5函数（实际使用时可以用更安全的库）
+        function md5(input) {
+            // 这里使用简单的哈希，实际生产环境建议使用crypto-js等库
+            let hash = 0;
+            for (let i = 0; i < input.length; i++) {
+                const char = input.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
             }
-            
-            // 简单的MD5函数（实际使用时可以用更安全的库）
-            function md5(input) {
-                // 这里使用简单的哈希，实际生产环境建议使用crypto-js等库
-                let hash = 0;
-                for (let i = 0; i < input.length; i++) {
-                    const char = input.charCodeAt(i);
-                    hash = ((hash << 5) - hash) + char;
-                    hash = hash & hash;
-                }
-                return Math.abs(hash).toString(36) + input.length.toString(36);
-            }
-            
-            function showTokenError(title, message) {
-                document.documentElement.innerHTML = `
+            return Math.abs(hash).toString(36) + input.length.toString(36);
+        }
+        
+        function showTokenError(title, message) {
+            document.documentElement.innerHTML = `
     <!DOCTYPE html>
     <html>
     <head>
@@ -135,9 +135,9 @@
         </div>
     </body>
     </html>`;
-            }
-        })();
-    </script>
+        }
+    })();
+</script>
     <style>
         * { 
             margin: 0; 
@@ -1335,3 +1335,4 @@
     </script>
 </body>
 </html>
+
