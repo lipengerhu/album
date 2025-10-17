@@ -4,20 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
-  <script>
-    // 简化版时间戳签名验证
+ <script>
     document.addEventListener('DOMContentLoaded', function() {
         const urlParams = new URLSearchParams(window.location.search);
         const timestamp = urlParams.get('t');
         const signature = urlParams.get('s');
         
-        // 验证参数是否存在
+        // 检查链接参数
         if (!timestamp || !signature) {
             showError('访问链接无效', '请使用小程序生成的正确链接访问');
             return;
         }
         
-        // 验证签名和时间戳
+        // 验证签名
         const isValid = verifySignature(timestamp, signature);
         
         if (!isValid) {
@@ -25,32 +24,23 @@
             return;
         }
         
-        // 验证成功，页面正常显示
-        console.log('签名验证成功，页面正常加载');
+        // 验证成功：隐藏验证提示，显示上传页面
+        document.getElementById('verification-loading').style.display = 'none';
+        document.getElementById('upload-container').style.display = 'block';
+        console.log('验证成功，显示上传页面');
     });
     
     function verifySignature(timestamp, receivedSignature) {
         const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
-        
-        // 验证时间戳有效性（5分钟内有效）
         const now = Math.floor(Date.now() / 1000);
         const requestTime = parseInt(timestamp);
         const timeDiff = Math.abs(now - requestTime);
         
         if (timeDiff > 300) {
-            console.log('时间戳过期:', timeDiff + '秒');
             return false;
         }
         
-        // 计算期望的签名
         const expectedSignature = md5(SECRET_KEY + timestamp);
-        console.log('签名验证:', {
-            received: receivedSignature,
-            expected: expectedSignature,
-            timestamp: timestamp,
-            timeDiff: timeDiff + '秒'
-        });
-        
         return receivedSignature === expectedSignature;
     }
     
@@ -65,7 +55,6 @@
     }
     
     function showError(title, message) {
-        // 直接替换整个body内容
         document.body.innerHTML = `
             <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5; padding: 20px;">
                 <div style="background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px;">
@@ -368,6 +357,35 @@
 
 </head>
 <body>
+    <!-- 添加这个验证提示 -->
+    <div id="verification-loading" style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5;">
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+            <div>正在验证访问权限...</div>
+        </div>
+    </div>
+
+    <!-- 在现有的container外面包裹一层 -->
+    <div id="upload-container" style="display: none;">
+        <!-- 这里开始是您原有的所有页面内容 -->
+        <div class="container">
+            <div class="header">
+                <h1>照片上传</h1>
+                <p class="subtitle">自动提取照片信息和位置</p>
+            </div>
+            
+            <div class="service-status" id="service-status">
+                检查服务状态...
+            </div>
+            
+            <div class="upload-area" id="upload-area">
+                <div class="upload-icon">📷</div>
+                <div class="upload-text">点击选择照片</div>
+                <div class="upload-hint">支持JPG、PNG等格式，自动提取GPS和EXIF信息</div>
+                <input type="file" id="file-input" accept="image/*" multiple>
+            </div>
+            
+            <!-- ... 后面所有内容保持不变 ... -->
     <div class="container">
         <div class="header">
             <h1>照片上传</h1>
@@ -1276,6 +1294,7 @@
     </script>
 </body>
 </html>
+
 
 
 
