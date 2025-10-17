@@ -4,47 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
-    <script>
-    // 时间戳签名验证方案
+   <script>
+    // 时间戳签名验证方案 - 修正版
     (function() {
         'use strict';
         
-        // 显示加载中
-        document.documentElement.style.display = 'none';
-        document.body.innerHTML = `
-            <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5;">
-                <div style="text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
-                    <div>正在验证访问权限...</div>
+        // 等待DOM完全加载
+        function initValidation() {
+            // 显示加载中
+            document.documentElement.style.display = 'none';
+            document.body.innerHTML = `
+                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+                        <div>正在验证访问权限...</div>
+                    </div>
                 </div>
-            </div>
-        `;
-        
-        const urlParams = new URLSearchParams(window.location.search);
-        const timestamp = urlParams.get('t');
-        const signature = urlParams.get('s');
-        
-        // 验证参数是否存在
-        if (!timestamp || !signature) {
-            showTokenError('访问链接无效', '请使用小程序生成的正确链接访问');
-            return;
-        }
-        
-        try {
-            // 验证签名和时间戳
-            const isValid = verifySignature(timestamp, signature);
+            `;
             
-            if (isValid) {
-                // 验证成功，恢复页面显示
-                document.body.innerHTML = '';
-                document.documentElement.style.display = '';
-                console.log('签名验证成功，页面正常加载');
-            } else {
-                showTokenError('链接已过期', '请在小程序中重新生成上传链接');
+            const urlParams = new URLSearchParams(window.location.search);
+            const timestamp = urlParams.get('t');
+            const signature = urlParams.get('s');
+            
+            // 验证参数是否存在
+            if (!timestamp || !signature) {
+                showTokenError('访问链接无效', '请使用小程序生成的正确链接访问');
+                return;
             }
-        } catch (error) {
-            console.error('验证过程出错:', error);
-            showTokenError('验证失败', '请检查链接是否正确或重新生成');
+            
+            try {
+                // 验证签名和时间戳
+                const isValid = verifySignature(timestamp, signature);
+                
+                if (isValid) {
+                    // 验证成功，恢复页面显示
+                    document.body.innerHTML = '';
+                    document.documentElement.style.display = '';
+                    console.log('签名验证成功，页面正常加载');
+                } else {
+                    showTokenError('链接已过期', '请在小程序中重新生成上传链接');
+                }
+            } catch (error) {
+                console.error('验证过程出错:', error);
+                showTokenError('验证失败', '请检查链接是否正确或重新生成');
+            }
         }
         
         function verifySignature(timestamp, receivedSignature) {
@@ -74,9 +77,8 @@
             return receivedSignature === expectedSignature;
         }
         
-        // 简单的MD5函数（实际使用时可以用更安全的库）
+        // 简单的MD5函数
         function md5(input) {
-            // 这里使用简单的哈希，实际生产环境建议使用crypto-js等库
             let hash = 0;
             for (let i = 0; i < input.length; i++) {
                 const char = input.charCodeAt(i);
@@ -87,7 +89,10 @@
         }
         
         function showTokenError(title, message) {
-            document.documentElement.innerHTML = `
+            // 确保document.body存在
+            if (document.body) {
+                document.documentElement.innerHTML = '';
+                document.body.innerHTML = `
     <!DOCTYPE html>
     <html>
     <head>
@@ -135,6 +140,14 @@
         </div>
     </body>
     </html>`;
+            }
+        }
+        
+        // 在DOM加载完成后执行验证
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initValidation);
+        } else {
+            initValidation();
         }
     })();
 </script>
@@ -1335,4 +1348,5 @@
     </script>
 </body>
 </html>
+
 
