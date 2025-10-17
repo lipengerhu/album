@@ -4,152 +4,80 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
-   <script>
-    // 时间戳签名验证方案 - 修正版
-    (function() {
-        'use strict';
+  <script>
+    // 简化版时间戳签名验证
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const timestamp = urlParams.get('t');
+        const signature = urlParams.get('s');
         
-        // 等待DOM完全加载
-        function initValidation() {
-            // 显示加载中
-            document.documentElement.style.display = 'none';
-            document.body.innerHTML = `
-                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5;">
-                    <div style="text-align: center;">
-                        <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
-                        <div>正在验证访问权限...</div>
-                    </div>
+        // 验证参数是否存在
+        if (!timestamp || !signature) {
+            showError('访问链接无效', '请使用小程序生成的正确链接访问');
+            return;
+        }
+        
+        // 验证签名和时间戳
+        const isValid = verifySignature(timestamp, signature);
+        
+        if (!isValid) {
+            showError('链接已过期或无效', '请在小程序中重新生成上传链接');
+            return;
+        }
+        
+        // 验证成功，页面正常显示
+        console.log('签名验证成功，页面正常加载');
+    });
+    
+    function verifySignature(timestamp, receivedSignature) {
+        const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
+        
+        // 验证时间戳有效性（5分钟内有效）
+        const now = Math.floor(Date.now() / 1000);
+        const requestTime = parseInt(timestamp);
+        const timeDiff = Math.abs(now - requestTime);
+        
+        if (timeDiff > 300) {
+            console.log('时间戳过期:', timeDiff + '秒');
+            return false;
+        }
+        
+        // 计算期望的签名
+        const expectedSignature = md5(SECRET_KEY + timestamp);
+        console.log('签名验证:', {
+            received: receivedSignature,
+            expected: expectedSignature,
+            timestamp: timestamp,
+            timeDiff: timeDiff + '秒'
+        });
+        
+        return receivedSignature === expectedSignature;
+    }
+    
+    function md5(input) {
+        let hash = 0;
+        for (let i = 0; i < input.length; i++) {
+            const char = input.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return Math.abs(hash).toString(36) + input.length.toString(36);
+    }
+    
+    function showError(title, message) {
+        // 直接替换整个body内容
+        document.body.innerHTML = `
+            <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5; padding: 20px;">
+                <div style="background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px;">
+                    <h1 style="color: #e74c3c; margin-bottom: 20px; font-size: 24px;">${title}</h1>
+                    <p style="color: #666; line-height: 1.6; margin-bottom: 10px;">${message}</p>
+                    <p style="font-size: 14px; color: #999; margin-top: 20px;">
+                        如需上传照片，请在小程序中生成专属链接
+                    </p>
                 </div>
-            `;
-            
-            const urlParams = new URLSearchParams(window.location.search);
-            const timestamp = urlParams.get('t');
-            const signature = urlParams.get('s');
-            
-            // 验证参数是否存在
-            if (!timestamp || !signature) {
-                showTokenError('访问链接无效', '请使用小程序生成的正确链接访问');
-                return;
-            }
-            
-            try {
-                // 验证签名和时间戳
-                const isValid = verifySignature(timestamp, signature);
-                
-                if (isValid) {
-                    // 验证成功，恢复页面显示
-                    document.body.innerHTML = '';
-                    document.documentElement.style.display = '';
-                    console.log('签名验证成功，页面正常加载');
-                } else {
-                    showTokenError('链接已过期', '请在小程序中重新生成上传链接');
-                }
-            } catch (error) {
-                console.error('验证过程出错:', error);
-                showTokenError('验证失败', '请检查链接是否正确或重新生成');
-            }
-        }
-        
-        function verifySignature(timestamp, receivedSignature) {
-            // 预设密钥（定期更换）
-            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
-            
-            // 验证时间戳有效性（5分钟内有效）
-            const now = Math.floor(Date.now() / 1000);
-            const requestTime = parseInt(timestamp);
-            const timeDiff = Math.abs(now - requestTime);
-            
-            if (timeDiff > 300) { // 5分钟 = 300秒
-                console.log('时间戳过期:', timeDiff + '秒');
-                return false;
-            }
-            
-            // 计算期望的签名
-            const expectedSignature = md5(SECRET_KEY + timestamp);
-            console.log('签名验证:', {
-                received: receivedSignature,
-                expected: expectedSignature,
-                timestamp: timestamp,
-                timeDiff: timeDiff + '秒'
-            });
-            
-            // 比较签名
-            return receivedSignature === expectedSignature;
-        }
-        
-        // 简单的MD5函数
-        function md5(input) {
-            let hash = 0;
-            for (let i = 0; i < input.length; i++) {
-                const char = input.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash;
-            }
-            return Math.abs(hash).toString(36) + input.length.toString(36);
-        }
-        
-        function showTokenError(title, message) {
-            // 确保document.body存在
-            if (document.body) {
-                document.documentElement.innerHTML = '';
-                document.body.innerHTML = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>访问被拒绝</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #f5f5f5;
-                margin: 0;
-                padding: 20px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-            }
-            .error-container {
-                background: white;
-                padding: 40px;
-                border-radius: 10px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                text-align: center;
-                max-width: 400px;
-            }
-            h1 {
-                color: #e74c3c;
-                margin-bottom: 20px;
-                font-size: 24px;
-            }
-            p {
-                color: #666;
-                line-height: 1.6;
-                margin-bottom: 10px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="error-container">
-            <h1>${title}</h1>
-            <p>${message}</p>
-            <p style="font-size: 14px; color: #999; margin-top: 20px;">
-                如需上传照片，请在小程序中生成专属链接
-            </p>
-        </div>
-    </body>
-    </html>`;
-            }
-        }
-        
-        // 在DOM加载完成后执行验证
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initValidation);
-        } else {
-            initValidation();
-        }
-    })();
+            </div>
+        `;
+    }
 </script>
     <style>
         * { 
@@ -1348,5 +1276,6 @@
     </script>
 </body>
 </html>
+
 
 
