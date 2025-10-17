@@ -14,22 +14,22 @@
     <script>
         // 强制清除缓存并验证token
         (function() {
-            'use strict';
-            
-            // 强制清除缓存
-            if (window.performance && window.performance.navigation && window.performance.navigation.type === 1) {
-                // 页面是通过刷新访问的
-                window.location.replace(window.location.href + '?t=' + Date.now());
-            }
-            
-            const urlParams = new URLSearchParams(window.location.search);
-            const token = urlParams.get('token');
-            
-            if (!token) {
-                // 完全重写整个页面
-                document.documentElement.style.display = 'none';
-                
-                const errorHTML = `
+            (function() {
+    'use strict';
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    
+    if (!token) {
+        showTokenError('此页面需要有效的访问令牌');
+        return;
+    }
+    
+    // 直接设置token，延迟验证到实际使用时
+    window.uploadToken = token;
+    
+    function showTokenError(message) {
+        document.documentElement.innerHTML = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -1393,4 +1393,5 @@
     </script>
 </body>
 </html>
+
 
