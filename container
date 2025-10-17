@@ -5,101 +5,126 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const timestamp = urlParams.get('t');
-            const signature = urlParams.get('s');
-            
-            // 检查链接参数
-            if (!timestamp || !signature) {
-                showError('访问链接无效', '请使用小程序生成的正确链接访问');
-                return;
-            }
-            
-            // 检查链接是否已被使用
-            if (isTimestampUsed(timestamp)) {
-                showError('链接已失效', '该链接已被使用，请重新生成新链接');
-                return;
-            }
-            
-            // 验证签名
-            const isValid = verifySignature(timestamp, signature);
-            
-            if (!isValid) {
-                showError('链接已过期或无效', '请在小程序中重新生成上传链接');
-                return;
-            }
-            
-            // 标记链接为已使用
-            markTimestampAsUsed(timestamp);
-            
-            // 验证成功，页面正常显示
-            console.log('验证成功，页面正常加载');
-        });
+ // 完整token验证方案 - 修正版
+(async function() {
+    'use strict';
+    
+    // 显示加载中
+    document.documentElement.style.display = 'none';
+    document.body.innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5;">
+            <div style="text-align: center;">
+                <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+                <div>正在验证访问权限...</div>
+            </div>
+        </div>
+    `;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    
+    if (!token) {
+        showTokenError('此页面需要有效的访问令牌');
+        return;
+    }
+    
+    try {
+        // 验证token
+        const isValid = await verifyToken(token);
         
-        function verifySignature(timestamp, receivedSignature) {
-            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
-            const now = Math.floor(Date.now() / 1000);
-            const requestTime = parseInt(timestamp);
-            const timeDiff = Math.abs(now - requestTime);
-            
-            if (timeDiff > 300) {
-                return false;
-            }
-            
-            const expectedSignature = md5(SECRET_KEY + timestamp);
-            console.log('签名验证:', {
-                received: receivedSignature,
-                expected: expectedSignature,
-                timestamp: timestamp,
-                timeDiff: timeDiff + '秒'
+        if (isValid) {
+            // 验证成功，恢复页面显示
+            document.body.innerHTML = '';
+            document.documentElement.style.display = '';
+            window.uploadToken = token;
+        } else {
+            showTokenError('访问令牌无效或已过期');
+        }
+    } catch (error) {
+        console.error('验证过程出错:', error);
+        showTokenError('验证服务暂时不可用，请稍后重试');
+    }
+    
+    async function verifyToken(token) {
+        try {
+            const response = await fetch('https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/generateUploadToken', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'verify_token',
+                    token: token
+                })
             });
             
-            return receivedSignature === expectedSignature;
-        }
-        
-        // 检查时间戳是否已使用
-        function isTimestampUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            const isUsed = usedTimestamps.includes(parseInt(timestamp));
-            console.log('时间戳使用检查:', { timestamp, isUsed, usedTimestamps });
-            return isUsed;
-        }
-        
-        // 标记时间戳为已使用
-        function markTimestampAsUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            usedTimestamps.push(parseInt(timestamp));
-            
-            // 只保留最近20个时间戳，避免存储过多
-            const recentTimestamps = usedTimestamps.slice(-20);
-            localStorage.setItem('usedTimestamps', JSON.stringify(recentTimestamps));
-            console.log('标记时间戳为已使用:', { timestamp, recentTimestamps });
-        }
-        
-        function md5(input) {
-            let hash = 0;
-            for (let i = 0; i < input.length; i++) {
-                const char = input.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash;
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
             }
-            return Math.abs(hash).toString(36) + input.length.toString(36);
+            
+            const result = await response.json();
+            return result.success;
+            
+        } catch (error) {
+            console.error('Token验证失败:', error);
+            throw new Error('Token验证失败: ' + error.message);
         }
-        
-        function showError(title, message) {
-            document.body.innerHTML = `
-                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5; padding: 20px;">
-                    <div style="background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px;">
-                        <h1 style="color: #e74c3c; margin-bottom: 20px; font-size: 24px;">${title}</h1>
-                        <p style="color: #666; line-height: 1.6; margin-bottom: 10px;">${message}</p>
-                        <p style="font-size: 14px; color: #999; margin-top: 20px;">
-                            如需上传照片，请在小程序中生成专属链接
-                        </p>
-                    </div>
-                </div>
-            `;
+    }
+    
+    function showTokenError(message) {
+        document.documentElement.innerHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>访问被拒绝</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
+        .error-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+        }
+        h1 {
+            color: #e74c3c;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1>访问被拒绝</h1>
+        <p>${message}</p>
+        <p>请使用正确的上传链接访问</p>
+        <p style="font-size: 14px; color: #999; margin-top: 20px;">
+            如需上传照片，请在小程序中生成专属链接
+        </p>
+    </div>
+</body>
+</html>`;
+    }
+})();
+            window.uploadToken = token;
+        })();
     </script>
     <style>
         * { 
@@ -387,6 +412,7 @@
             }
         }
     </style>
+
 </head>
 <body>
     <div class="container">
@@ -439,8 +465,16 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
+    <!-- 添加 EXIF.js 库 -->
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script>
+        // 首先检查token是否存在
+        if (!window.uploadToken) {
+            // 如果没有token，重定向到错误页面
+            window.location.href = 'about:blank';
+            throw new Error('Invalid access: token required');
+        }
+
         // 配置信息 - 串行上传
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
@@ -1093,6 +1127,7 @@
                         combinedFingerprint: fileData.combinedFingerprint, // 新增组合指纹
                         totalChunks: totalChunks,
                         fileSize: fileSize,
+                        userOpenid: userOpenid,  
                         gpsLatitude: fileData.fileInfo.latitude,
                         gpsLongitude: fileData.fileInfo.longitude,
                         earliestTime: fileData.fileInfo.earliestTime
@@ -1178,7 +1213,8 @@
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Referer': 'https://album-70p.pages.dev'
                     },
                     body: JSON.stringify(data),
                     signal: signal
@@ -1209,7 +1245,8 @@
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Referer': 'https://album-70p.pages.dev'
                     },
                     body: JSON.stringify({
                         action: 'health_check'
@@ -1296,3 +1333,4 @@
     </script>
 </body>
 </html>
+
