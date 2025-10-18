@@ -539,7 +539,7 @@
                 );
                 
                 if (!existingFile && selectedFiles.length < CONFIG.MAX_FILES) {
-                    // 提取照片信息和生成组合指纹
+                    // 提取照片信息
                     const fileInfo = await extractFileInfo(file);
                     
                     selectedFiles.push({
@@ -547,7 +547,6 @@
                         status: 'pending',
                         progress: 0,
                         fingerprint: null,
-                        combinedFingerprint: fileInfo.combinedFingerprint,
                         fileId: null,
                         error: null,
                         fileInfo: fileInfo
@@ -565,7 +564,7 @@
             elements.fileInput.value = '';
         }
 
-        // 提取照片信息 - 增强版本，包含组合指纹生成
+        // 提取照片信息
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
                 EXIF.getData(file, function() {
@@ -580,25 +579,9 @@
                         // 提取时间信息
                         const timeInfo = extractTimeInfo(allExifData, file);
                         
-                        // 提取EXIF特征
-                        const exifSignature = extractExifSignature(allExifData, file);
-                        
-                        // 生成视觉指纹
-                        const visualHash = generateVisualHash(file, allExifData);
-                        
-                        // 生成组合指纹
-                        const combinedFingerprint = generateCombinedFingerprint(
-                            visualHash, 
-                            exifSignature, 
-                            timeInfo.earliestTime
-                        );
-                        
                         resolve({
                             ...gpsInfo,
-                            ...timeInfo,
-                            exifSignature: exifSignature,
-                            visualHash: visualHash,
-                            combinedFingerprint: combinedFingerprint
+                            ...timeInfo
                         });
                     } catch (error) {
                         console.error('提取EXIF信息失败:', error);
@@ -607,14 +590,7 @@
                             latitude: null,
                             longitude: null,
                             earliestTime: null,
-                            hasTime: false,
-                            exifSignature: {},
-                            visualHash: generateFallbackVisualHash(file),
-                            combinedFingerprint: generateCombinedFingerprint(
-                                generateFallbackVisualHash(file),
-                                {},
-                                null
-                            )
+                            hasTime: false
                         });
                     }
                 });
@@ -745,83 +721,6 @@
             return earliestDate.toISOString();
         }
 
-        // 提取EXIF特征签名
-        function extractExifSignature(exifData, file) {
-            const signature = {
-                // 设备信息
-                make: exifData.Make || 'unknown',
-                model: exifData.Model || 'unknown',
-                software: exifData.Software || 'unknown',
-                
-                // 拍摄参数
-                exposureTime: exifData.ExposureTime || 'unknown',
-                fNumber: exifData.FNumber || 'unknown',
-                iso: exifData.ISOSpeedRatings || 'unknown',
-                focalLength: exifData.FocalLength || 'unknown',
-                
-                // 图像信息
-                imageWidth: exifData.PixelXDimension || exifData.ImageWidth || 0,
-                imageHeight: exifData.PixelYDimension || exifData.ImageHeight || 0,
-                orientation: exifData.Orientation || 1,
-                
-                // 文件信息
-                fileSize: file.size,
-                fileType: file.type || 'unknown',
-                
-                // 计算特征
-                dimensions: `${exifData.PixelXDimension || exifData.ImageWidth || 0}x${exifData.PixelYDimension || exifData.ImageHeight || 0}`,
-                aspectRatio: exifData.PixelXDimension && exifData.PixelYDimension ? 
-                    (exifData.PixelXDimension / exifData.PixelYDimension).toFixed(3) : 'unknown'
-            };
-            
-            console.log('生成的EXIF特征签名:', signature);
-            return signature;
-        }
-
-        // 生成视觉指纹（基于文件特征）
-        function generateVisualHash(file, exifData) {
-            try {
-                // 使用图像尺寸、文件大小、EXIF特征等生成视觉指纹
-                const width = exifData.PixelXDimension || exifData.ImageWidth || 0;
-                const height = exifData.PixelYDimension || exifData.ImageHeight || 0;
-                const fileSize = file.size;
-                const aspectRatio = width && height ? (width / height).toFixed(3) : '0';
-                
-                // 基于特征生成稳定的视觉指纹
-                const sizeCategory = fileSize > 10000000 ? 'large' : fileSize > 5000000 ? 'medium' : 'small';
-                const resolutionCategory = width * height > 10000000 ? 'high' : width * height > 5000000 ? 'medium' : 'low';
-                
-                const visualHash = `vis_${sizeCategory}_${resolutionCategory}_${width}_${height}_${aspectRatio}`;
-                
-                console.log('生成的视觉指纹:', visualHash, {
-                    width, height, fileSize, aspectRatio, sizeCategory, resolutionCategory
-                });
-                
-                return visualHash;
-            } catch (error) {
-                console.error('生成视觉指纹失败:', error);
-                return generateFallbackVisualHash(file);
-            }
-        }
-
-        // 生成备用视觉指纹
-        function generateFallbackVisualHash(file) {
-            return `vis_fallback_${file.size}_${file.lastModified}_${Date.now().toString(36)}`;
-        }
-
-        // 生成组合指纹
-        function generateCombinedFingerprint(visualHash, exifSignature, captureTime) {
-            const combinedFingerprint = {
-                visualHash: visualHash,
-                exifSignature: exifSignature,
-                captureTime: captureTime || new Date().toISOString(),
-                timestamp: Date.now()
-            };
-            
-            console.log('生成的组合指纹:', combinedFingerprint);
-            return combinedFingerprint;
-        }
-
         // 更新文件列表
         function updateFileList() {
             // 只显示未取消的文件
@@ -849,11 +748,6 @@
                     `<div class="file-meta">📍 有地址信息</div>` : 
                     `<div class="file-meta">📍 无地址信息</div>`;
                 
-                // EXIF特征显示
-                const exifInfo = fileData.fileInfo.exifSignature ? 
-                    `<div class="file-meta">📐 ${fileData.fileInfo.exifSignature.dimensions || '未知尺寸'}</div>` : 
-                    `<div class="file-meta">📐 未知尺寸</div>`;
-                
                 // 文件大小
                 const sizeInfo = `<div class="file-meta">📦 ${formatFileSize(fileData.file.size)}</div>`;
                 
@@ -877,7 +771,6 @@
                         <div class="file-name">${fileData.file.name}</div>
                         ${timeInfo}
                         ${gpsInfo}
-                        ${exifInfo}
                         ${sizeInfo}
                         ${errorInfo}
                         ${progressBar}
@@ -1029,7 +922,7 @@
             }, 100);
         }
 
-        // 上传单个文件 - 修改为传递组合指纹
+        // 上传单个文件
         async function uploadFile(fileData, signal) {
             // 更新状态为上传中
             fileData.status = 'uploading';
@@ -1060,14 +953,13 @@
                         
                         const chunkBase64 = await readChunkAsBase64(chunk);
                         
-                        // 上传分块数据，包含组合指纹
+                        // 上传分块数据
                         const uploadData = {
                             action: 'upload_chunk',
                             chunkIndex: chunkIndex,
                             totalChunks: totalChunks,
                             fileName: fileData.file.name,
                             fingerprint: fileData.fingerprint,
-                            combinedFingerprint: fileData.combinedFingerprint, // 新增组合指纹
                             data: chunkBase64,
                             fileSize: fileSize,
                             gpsLatitude: fileData.fileInfo.latitude,
@@ -1085,12 +977,11 @@
                         updateFileList();
                     }
                     
-                    // 完成上传，传递组合指纹
+                    // 完成上传
                     const completeData = {
                         action: 'complete_upload',
                         fileName: fileData.file.name,
                         fingerprint: fileData.fingerprint,
-                        combinedFingerprint: fileData.combinedFingerprint, // 新增组合指纹
                         totalChunks: totalChunks,
                         fileSize: fileSize,
                         gpsLatitude: fileData.fileInfo.latitude,
@@ -1229,70 +1120,81 @@
             }
         }
 
-        // 清空文件
+        // 清空文件列表
         function clearFiles() {
-            if (!uploadInProgress) {
-                // 取消当前上传
-                if (currentUploadController) {
-                    currentUploadController.abort();
-                    currentUploadController = null;
+            if (uploadInProgress) {
+                if (confirm('上传正在进行中，确定要取消并清空列表吗？')) {
+                    if (currentUploadController) {
+                        currentUploadController.abort();
+                        currentUploadController = null;
+                    }
+                    uploadInProgress = false;
+                    selectedFiles = [];
+                    updateFileList();
+                    updateUploadButton();
+                    updateStats();
+                    hideResult();
                 }
-                
+            } else {
                 selectedFiles = [];
                 updateFileList();
                 updateUploadButton();
                 updateStats();
-                elements.resultInfo.style.display = 'none';
-            } else {
-                alert('上传进行中，请等待完成后清空');
+                hideResult();
             }
         }
 
         // 显示结果
-        function showResult(success, error) {
-            const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
-            const withAddressCount = visibleFiles.filter(f => f.fileInfo.hasGPS).length;
-            
+        function showResult(successCount, errorCount) {
+            elements.resultInfo.style.display = 'block';
             elements.resultContent.innerHTML = `
-                <div>
-                    <div>✅ 成功上传: ${success} 个文件</div>
-                    <div>❌ 上传失败: ${error} 个文件</div>
-                    <div>📍 含地址信息: ${withAddressCount} 个文件</div>
-                    <div>🔍 已生成组合指纹: ${success} 个文件</div>
-                    ${error > 0 ? '<div style="color: #dc3545; margin-top: 10px;">请检查网络连接后重试失败的文件</div>' : ''}
+                <div style="color: #28a745; margin-bottom: 8px;">✅ 成功上传: ${successCount} 个文件</div>
+                ${errorCount > 0 ? `<div style="color: #dc3545;">❌ 上传失败: ${errorCount} 个文件</div>` : ''}
+                <div style="margin-top: 12px; font-size: 13px; color: #666;">
+                    照片已保存到您的相册中
                 </div>
             `;
-            elements.resultInfo.style.display = 'block';
         }
 
-        // 设置拖拽上传
+        // 隐藏结果
+        function hideResult() {
+            elements.resultInfo.style.display = 'none';
+        }
+
+        // 设置拖放功能
         function setupDragAndDrop() {
-            elements.uploadArea.addEventListener('dragover', (e) => {
+            const uploadArea = elements.uploadArea;
+            
+            uploadArea.addEventListener('dragover', function(e) {
                 e.preventDefault();
-                elements.uploadArea.classList.add('active');
+                uploadArea.classList.add('active');
             });
-
-            elements.uploadArea.addEventListener('dragleave', () => {
-                elements.uploadArea.classList.remove('active');
-            });
-
-            elements.uploadArea.addEventListener('drop', (e) => {
+            
+            uploadArea.addEventListener('dragleave', function(e) {
                 e.preventDefault();
-                elements.uploadArea.classList.remove('active');
-                if (e.dataTransfer.files.length) {
-                    elements.fileInput.files = e.dataTransfer.files;
-                    handleFileSelect({ target: elements.fileInput });
-                }
+                uploadArea.classList.remove('active');
+            });
+            
+            uploadArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                uploadArea.classList.remove('active');
+                
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length === 0) return;
+                
+                const event = {
+                    target: {
+                        files: e.dataTransfer.files
+                    }
+                };
+                handleFileSelect(event);
             });
         }
 
-        // 启动应用 - 确保DOM完全加载后再执行
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            // DOM已经加载完成
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
             init();
-        }
+        });
     </script>
 </body>
 </html>
