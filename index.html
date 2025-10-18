@@ -50,19 +50,25 @@
         时间差: Math.abs(now - requestTime)
     });
     
-    // 时间验证（5分钟）
+    // 1. 时间验证（5分钟）
     if (Math.abs(now - requestTime) > 300) {
         console.log('时间验证失败: 时间差过大');
         return false;
     }
     
-    // 严格的签名长度验证
-    if (!receivedSignature || receivedSignature.length < 10) {
+    // 2. 严格的签名长度验证
+    if (!receivedSignature || receivedSignature.length < 15) {
         console.log('签名长度无效:', receivedSignature?.length);
         return false;
     }
     
-    // 真正的签名验证（与小程序端算法一致）
+    // 3. 严格的签名格式验证（必须包含下划线）
+    if (!receivedSignature.includes('_')) {
+        console.log('签名格式错误: 缺少分隔符');
+        return false;
+    }
+    
+    // 4. 真正的签名生成和比较（和小程序端算法完全一致）
     function generateStrongSignature(input) {
         let hash = 0;
         for (let i = 0; i < input.length; i++) {
@@ -70,17 +76,18 @@
             hash = ((hash << 5) - hash) + char;
             hash = hash & hash;
         }
+        // 和小程序端完全相同的算法
         const baseHash = Math.abs(hash).toString(36);
         const lengthPart = input.length.toString(36);
         const randomSuffix = Date.now().toString(36).substr(-6);
-        return baseHash + lengthPart + randomSuffix;
+        return baseHash + '_' + lengthPart + '_' + randomSuffix;
     }
     
-    // 注意：HTML端不知道openid，所以验证算法要和小程序端一致但不包含openid
+    // 注意：HTML端验证时也不包含openid，只使用时间戳
     const expectedSignature = generateStrongSignature(SECRET_KEY + timestamp);
     const isValid = expectedSignature === receivedSignature;
     
-    console.log('签名验证详情:', {
+    console.log('HTML严格签名验证:', {
         received: receivedSignature,
         expected: expectedSignature,
         receivedLength: receivedSignature.length,
@@ -1219,6 +1226,7 @@
     </script>
 </body>
 </html>
+
 
 
 
