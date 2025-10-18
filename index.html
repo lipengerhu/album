@@ -42,34 +42,36 @@
      function verifySignature(timestamp, receivedSignature) {
     const now = Math.floor(Date.now() / 1000);
     const requestTime = parseInt(timestamp);
-    
-    console.log('时间验证:', {
-        当前时间: now,
-        请求时间: requestTime,
-        时间差: Math.abs(now - requestTime)
-    });
-    
-    // 1. 时间验证（5分钟）
+
+    // 1. 严格的时间验证（5分钟）
     if (Math.abs(now - requestTime) > 300) {
-        console.log('时间验证失败: 时间差过大');
+        console.log('时间验证失败: 链接已过期');
         return false;
     }
-    
+
     // 2. 严格的签名长度验证
+    // 注意：这个最小长度 15 是基于我们新的签名算法。
+    // 如果小程序端生成的签名长度变了，这里也要相应调整。
     if (!receivedSignature || receivedSignature.length < 15) {
-        console.log('签名长度无效:', receivedSignature?.length);
+        console.log('签名长度无效: 签名太短或不存在');
         return false;
     }
-    
-    // 3. 严格的签名格式验证（必须包含下划线）
+
+    // 3. 严格的签名格式验证（必须包含我们约定的分隔符）
     if (!receivedSignature.includes('_')) {
         console.log('签名格式错误: 缺少分隔符');
         return false;
     }
-    
-    // 4. HTML端不知道openid，无法进行完整的签名验证
-    // 只能做基础格式验证，真正的验证在云函数进行
-    console.log('HTML基础验证通过，具体签名验证在云函数进行');
+
+    // 4. 可选的额外强度检查：确保签名由特定字符组成（小写字母、数字、下划线）
+    if (!/^[a-z0-9_]+$/.test(receivedSignature)) {
+        console.log('签名格式错误: 包含非法字符');
+        return false;
+    }
+
+    console.log('✅ HTML端基础验证通过。签名具体内容将在云函数进行最终验证。');
+    // 注意：这里返回 true 只是因为格式、长度、时间等基础检查通过了。
+    // 最关键的身份验证（签名是否由该用户的openid生成）在云函数中完成。
     return true;
 }
         
@@ -1201,6 +1203,7 @@
     </script>
 </body>
 </html>
+
 
 
 
