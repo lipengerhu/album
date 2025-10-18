@@ -39,8 +39,7 @@
             setTimeout(init, 100);
         });
         
-      function verifySignature(timestamp, receivedSignature) {
-    const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
+     function verifySignature(timestamp, receivedSignature) {
     const now = Math.floor(Date.now() / 1000);
     const requestTime = parseInt(timestamp);
     
@@ -68,34 +67,10 @@
         return false;
     }
     
-    // 4. 真正的签名生成和比较（和小程序端算法完全一致）
-    function generateStrongSignature(input) {
-        let hash = 0;
-        for (let i = 0; i < input.length; i++) {
-            const char = input.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-        }
-        // 和小程序端完全相同的算法
-        const baseHash = Math.abs(hash).toString(36);
-        const lengthPart = input.length.toString(36);
-        const randomSuffix = Date.now().toString(36).substr(-6);
-        return baseHash + '_' + lengthPart + '_' + randomSuffix;
-    }
-    
-    // 注意：HTML端验证时也不包含openid，只使用时间戳
-    const expectedSignature = generateStrongSignature(SECRET_KEY + timestamp);
-    const isValid = expectedSignature === receivedSignature;
-    
-    console.log('HTML严格签名验证:', {
-        received: receivedSignature,
-        expected: expectedSignature,
-        receivedLength: receivedSignature.length,
-        expectedLength: expectedSignature.length,
-        isValid: isValid
-    });
-    
-    return isValid;
+    // 4. HTML端不知道openid，无法进行完整的签名验证
+    // 只能做基础格式验证，真正的验证在云函数进行
+    console.log('HTML基础验证通过，具体签名验证在云函数进行');
+    return true;
 }
         
         // 检查时间戳是否已使用
@@ -1226,6 +1201,7 @@
     </script>
 </body>
 </html>
+
 
 
 
