@@ -39,40 +39,52 @@
             setTimeout(init, 100);
         });
         
-       function verifySignature(timestamp, receivedSignature) {
+      function verifySignature(timestamp, receivedSignature) {
     const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
     const now = Math.floor(Date.now() / 1000);
     const requestTime = parseInt(timestamp);
     
-    // 时间验证
+    console.log('时间验证:', {
+        当前时间: now,
+        请求时间: requestTime,
+        时间差: Math.abs(now - requestTime)
+    });
+    
+    // 时间验证（5分钟）
     if (Math.abs(now - requestTime) > 300) {
         console.log('时间验证失败: 时间差过大');
         return false;
     }
     
-    // 签名长度验证
+    // 严格的签名长度验证
     if (!receivedSignature || receivedSignature.length < 10) {
-        console.log('签名长度无效');
+        console.log('签名长度无效:', receivedSignature?.length);
         return false;
     }
     
-    // === 添加真正的签名验证 ===
-    function generateSignature(input) {
+    // 真正的签名验证（与小程序端算法一致）
+    function generateStrongSignature(input) {
         let hash = 0;
         for (let i = 0; i < input.length; i++) {
             const char = input.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
             hash = hash & hash;
         }
-        return Math.abs(hash).toString(36) + input.length.toString(36) + Date.now().toString(36).substr(0, 6);
+        const baseHash = Math.abs(hash).toString(36);
+        const lengthPart = input.length.toString(36);
+        const randomSuffix = Date.now().toString(36).substr(-6);
+        return baseHash + lengthPart + randomSuffix;
     }
     
-    const expectedSignature = generateSignature(SECRET_KEY + timestamp);
+    // 注意：HTML端不知道openid，所以验证算法要和小程序端一致但不包含openid
+    const expectedSignature = generateStrongSignature(SECRET_KEY + timestamp);
     const isValid = expectedSignature === receivedSignature;
     
-    console.log('签名验证:', {
+    console.log('签名验证详情:', {
         received: receivedSignature,
         expected: expectedSignature,
+        receivedLength: receivedSignature.length,
+        expectedLength: expectedSignature.length,
         isValid: isValid
     });
     
@@ -1207,5 +1219,6 @@
     </script>
 </body>
 </html>
+
 
 
