@@ -39,32 +39,45 @@
             setTimeout(init, 100);
         });
         
-        function verifySignature(timestamp, receivedSignature) {
-            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
-            const now = Math.floor(Date.now() / 1000);
-            const requestTime = parseInt(timestamp);
-            
-            console.log('时间验证:', {
-                当前时间: now,
-                请求时间: requestTime,
-                时间差: Math.abs(now - requestTime)
-            });
-            
-            // 放宽时间验证，从5分钟到30分钟
-            if (Math.abs(now - requestTime) > 300) { // 5分钟
-                console.log('时间验证失败: 时间差过大');
-                return false;
-            }
-            
-            // 简化签名验证，只检查基本格式
-            if (!receivedSignature || receivedSignature.length < 5) {
-                console.log('签名格式无效');
-                return false;
-            }
-            
-            console.log('签名验证通过');
-            return true;
+       function verifySignature(timestamp, receivedSignature) {
+    const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
+    const now = Math.floor(Date.now() / 1000);
+    const requestTime = parseInt(timestamp);
+    
+    // 时间验证
+    if (Math.abs(now - requestTime) > 300) {
+        console.log('时间验证失败: 时间差过大');
+        return false;
+    }
+    
+    // 签名长度验证
+    if (!receivedSignature || receivedSignature.length < 10) {
+        console.log('签名长度无效');
+        return false;
+    }
+    
+    // === 添加真正的签名验证 ===
+    function generateSignature(input) {
+        let hash = 0;
+        for (let i = 0; i < input.length; i++) {
+            const char = input.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
         }
+        return Math.abs(hash).toString(36) + input.length.toString(36) + Date.now().toString(36).substr(0, 6);
+    }
+    
+    const expectedSignature = generateSignature(SECRET_KEY + timestamp);
+    const isValid = expectedSignature === receivedSignature;
+    
+    console.log('签名验证:', {
+        received: receivedSignature,
+        expected: expectedSignature,
+        isValid: isValid
+    });
+    
+    return isValid;
+}
         
         // 检查时间戳是否已使用
         function isTimestampUsed(timestamp) {
@@ -1194,4 +1207,5 @@
     </script>
 </body>
 </html>
+
 
