@@ -4,8 +4,104 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const timestamp = urlParams.get('t');
+            const signature = urlParams.get('s');
+            
+            // 检查链接参数
+            if (!timestamp || !signature) {
+                showError('访问链接无效', '请使用小程序生成的正确链接访问');
+                return;
+            }
+            
+            // 检查链接是否已被使用
+            if (isTimestampUsed(timestamp)) {
+                showError('链接已失效', '该链接已被使用，请重新生成新链接');
+                return;
+            }
+            
+            // 验证签名
+            const isValid = verifySignature(timestamp, signature);
+            
+            if (!isValid) {
+                showError('链接已过期或无效', '请在小程序中重新生成上传链接');
+                return;
+            }
+            
+            // 标记链接为已使用
+            markTimestampAsUsed(timestamp);
+            
+            // 验证成功，页面正常显示
+            console.log('验证成功，页面正常加载');
+        });
+        
+        function verifySignature(timestamp, receivedSignature) {
+            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
+            const now = Math.floor(Date.now() / 1000);
+            const requestTime = parseInt(timestamp);
+            const timeDiff = Math.abs(now - requestTime);
+            
+            if (timeDiff > 300) {
+                return false;
+            }
+            
+            const expectedSignature = md5(SECRET_KEY + timestamp);
+            console.log('签名验证:', {
+                received: receivedSignature,
+                expected: expectedSignature,
+                timestamp: timestamp,
+                timeDiff: timeDiff + '秒'
+            });
+            
+            return receivedSignature === expectedSignature;
+        }
+        
+        // 检查时间戳是否已使用
+        function isTimestampUsed(timestamp) {
+            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
+            const isUsed = usedTimestamps.includes(parseInt(timestamp));
+            console.log('时间戳使用检查:', { timestamp, isUsed, usedTimestamps });
+            return isUsed;
+        }
+        
+        // 标记时间戳为已使用
+        function markTimestampAsUsed(timestamp) {
+            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
+            usedTimestamps.push(parseInt(timestamp));
+            
+            // 只保留最近20个时间戳，避免存储过多
+            const recentTimestamps = usedTimestamps.slice(-20);
+            localStorage.setItem('usedTimestamps', JSON.stringify(recentTimestamps));
+            console.log('标记时间戳为已使用:', { timestamp, recentTimestamps });
+        }
+        
+        function md5(input) {
+            let hash = 0;
+            for (let i = 0; i < input.length; i++) {
+                const char = input.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return Math.abs(hash).toString(36) + input.length.toString(36);
+        }
+        
+        function showError(title, message) {
+            document.body.innerHTML = `
+                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5; padding: 20px;">
+                    <div style="background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px;">
+                        <h1 style="color: #e74c3c; margin-bottom: 20px; font-size: 24px;">${title}</h1>
+                        <p style="color: #666; line-height: 1.6; margin-bottom: 10px;">${message}</p>
+                        <p style="font-size: 14px; color: #999; margin-top: 20px;">
+                            如需上传照片，请在小程序中生成专属链接
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
     <style>
-        /* 你的原有样式保持不变 */
         * { 
             margin: 0; 
             padding: 0; 
@@ -269,36 +365,6 @@
             margin-left: 12px;
         }
 
-        .error-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background: #f5f5f5;
-            padding: 20px;
-        }
-
-        .error-message {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-            max-width: 400px;
-        }
-
-        .error-title {
-            color: #e74c3c;
-            margin-bottom: 20px;
-            font-size: 24px;
-        }
-
-        .error-detail {
-            color: #666;
-            line-height: 1.6;
-            margin-bottom: 10px;
-        }
-
         @media (max-width: 380px) {
             .container {
                 padding: 16px;
@@ -323,72 +389,59 @@
     </style>
 </head>
 <body>
-    <div id="app-content" style="display: none;">
-        <div class="container">
-            <div class="header">
-                <h1>照片上传</h1>
-                <p class="subtitle">自动提取照片信息和位置</p>
+    <div class="container">
+        <div class="header">
+            <h1>照片上传</h1>
+            <p class="subtitle">自动提取照片信息和位置</p>
+        </div>
+        
+        <div class="service-status" id="service-status">
+            检查服务状态...
+        </div>
+        
+        <div class="upload-area" id="upload-area">
+            <div class="upload-icon">📷</div>
+            <div class="upload-text">点击选择照片</div>
+            <div class="upload-hint">支持JPG、PNG等格式，自动提取GPS和EXIF信息</div>
+            <input type="file" id="file-input" accept="image/*" multiple>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-value" id="total-files">0</div>
+                <div class="stat-label">总文件</div>
             </div>
-            
-            <div class="service-status" id="service-status">
-                检查服务状态...
+            <div class="stat-item">
+                <div class="stat-value" id="with-address">0</div>
+                <div class="stat-label">含地址信息</div>
             </div>
-            
-            <div class="upload-area" id="upload-area">
-                <div class="upload-icon">📷</div>
-                <div class="upload-text">点击选择照片</div>
-                <div class="upload-hint">支持JPG、PNG等格式，自动提取GPS和EXIF信息</div>
-                <input type="file" id="file-input" accept="image/*" multiple>
+            <div class="stat-item">
+                <div class="stat-value" id="total-size">0MB</div>
+                <div class="stat-label">总大小</div>
             </div>
-            
-            <div class="stats">
-                <div class="stat-item">
-                    <div class="stat-value" id="total-files">0</div>
-                    <div class="stat-label">总文件</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="with-address">0</div>
-                    <div class="stat-label">含地址信息</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="total-size">0MB</div>
-                    <div class="stat-label">总大小</div>
-                </div>
+        </div>
+        
+        <div class="file-list" id="file-list">
+            <div class="empty-state" id="empty-state">
+                暂无照片
             </div>
-            
-            <div class="file-list" id="file-list">
-                <div class="empty-state" id="empty-state">
-                    暂无照片
-                </div>
-            </div>
-            
-            <div class="controls">
-                <button class="btn" id="start-upload" disabled>开始上传</button>
-                <button class="btn btn-clear" id="clear-files">清空列表</button>
-            </div>
-            
-            <div class="result-info" id="result-info">
-                <div class="result-title">上传结果</div>
-                <div id="result-content"></div>
-            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" id="start-upload" disabled>开始上传</button>
+            <button class="btn btn-clear" id="clear-files">清空列表</button>
+        </div>
+        
+        <div class="result-info" id="result-info">
+            <div class="result-title">上传结果</div>
+            <div id="result-content"></div>
         </div>
     </div>
 
-    <div id="error-content" style="display: none;">
-        <div class="error-container">
-            <div class="error-message">
-                <h1 class="error-title" id="error-title">访问被拒绝</h1>
-                <p class="error-detail" id="error-detail">请使用小程序生成的正确链接访问</p>
-                <p style="font-size: 14px; color: #999; margin-top: 20px;">
-                    如需上传照片，请在小程序中生成专属链接
-                </p>
-            </div>
-        </div>
-    </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script>
-        // 配置信息
+        // 配置信息 - 串行上传
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
             MAX_FILES: 50,
@@ -400,141 +453,20 @@
         let selectedFiles = [];
         let uploadInProgress = false;
         let currentUploadController = null;
+        let currentUploadIndex = 0;
 
-        // DOM元素引用
+        // DOM元素 - 在DOM加载完成后初始化
         let elements = {};
 
-        // 你的原有签名验证代码 - 完全保持原样
-        function verifySignature(timestamp, receivedSignature) {
-            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
-            const now = Math.floor(Date.now() / 1000);
-            const requestTime = parseInt(timestamp);
-            const timeDiff = Math.abs(now - requestTime);
-            
-            if (timeDiff > 300) {
-                return false;
-            }
-            
-            const expectedSignature = generateSignature(timestamp);
-            console.log('签名验证:', {
-                received: receivedSignature,
-                expected: expectedSignature,
-                timestamp: timestamp,
-                timeDiff: timeDiff + '秒'
-            });
-            
-            return receivedSignature === expectedSignature;
-        }
-
-        // 你的原有生成签名函数 - 完全保持原样
-        function generateSignature(timestamp) {
-            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
-            
-            function md5(input) {
-                let hash = 0;
-                for (let i = 0; i < input.length; i++) {
-                    const char = input.charCodeAt(i);
-                    hash = ((hash << 5) - hash) + char;
-                    hash = hash & hash;
-                }
-                return Math.abs(hash).toString(36) + input.length.toString(36);
-            }
-            
-            return md5(SECRET_KEY + timestamp);
-        }
-
-        // 你的原有时间戳使用检查 - 完全保持原样
-        function isTimestampUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            const isUsed = usedTimestamps.includes(parseInt(timestamp));
-            console.log('时间戳使用检查:', { timestamp, isUsed, usedTimestamps });
-            return isUsed;
-        }
-
-        // 你的原有标记时间戳为已使用 - 完全保持原样
-        function markTimestampAsUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            usedTimestamps.push(parseInt(timestamp));
-            
-            // 只保留最近20个时间戳，避免存储过多
-            const recentTimestamps = usedTimestamps.slice(-20);
-            localStorage.setItem('usedTimestamps', JSON.stringify(recentTimestamps));
-            console.log('标记时间戳为已使用:', { timestamp, recentTimestamps });
-        }
-
-        // 显示错误页面
-        function showError(title, message) {
-            document.getElementById('error-title').textContent = title;
-            document.getElementById('error-detail').textContent = message;
-            document.getElementById('app-content').style.display = 'none';
-            document.getElementById('error-content').style.display = 'block';
-        }
-
-        // 显示应用页面
-        function showApp() {
-            document.getElementById('error-content').style.display = 'none';
-            document.getElementById('app-content').style.display = 'block';
-        }
-
-        // 页面加载时的验证 - 使用你的原有逻辑
-        function validateAccess() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const timestamp = urlParams.get('t');
-            const signature = urlParams.get('s');
-            
-            console.log('URL参数:', { timestamp, signature });
-            
-            // 检查链接参数
-            if (!timestamp || !signature) {
-                showError('访问链接无效', '请使用小程序生成的正确链接访问');
-                return false;
-            }
-            
-            // 检查链接是否已被使用
-            if (isTimestampUsed(timestamp)) {
-                showError('链接已失效', '该链接已被使用，请重新生成新链接');
-                return false;
-            }
-            
-            // 验证签名
-            const isValid = verifySignature(timestamp, signature);
-            
-            if (!isValid) {
-                showError('链接已过期或无效', '请在小程序中重新生成上传链接');
-                return false;
-            }
-            
-            // 标记链接为已使用
-            markTimestampAsUsed(timestamp);
-            
-            // 验证成功，显示应用
-            showApp();
-            console.log('验证成功，页面正常加载');
-            return true;
-        }
-
-        // 修复DOM元素初始化问题
+        // 初始化DOM元素引用
         function initializeElements() {
-            // 使用更健壮的选择器，确保元素存在
-            const fileInput = document.getElementById('file-input');
-            const uploadArea = document.getElementById('upload-area');
-            const fileList = document.getElementById('file-list');
-            const startUpload = document.getElementById('start-upload');
-            const clearFiles = document.getElementById('clear-files');
-            
-            // 检查必要的DOM元素是否存在
-            if (!fileInput || !uploadArea || !fileList || !startUpload || !clearFiles) {
-                console.error('必要的DOM元素未找到');
-                return false;
-            }
-            
             elements = {
-                fileInput: fileInput,
-                uploadArea: uploadArea,
-                fileList: fileList,
+                fileInput: document.getElementById('file-input'),
+                uploadArea: document.getElementById('upload-area'),
+                fileList: document.getElementById('file-list'),
                 emptyState: document.getElementById('empty-state'),
-                startUpload: startUpload,
-                clearFiles: clearFiles,
+                startUpload: document.getElementById('start-upload'),
+                clearFiles: document.getElementById('clear-files'),
                 resultInfo: document.getElementById('result-info'),
                 resultContent: document.getElementById('result-content'),
                 serviceStatus: document.getElementById('service-status'),
@@ -543,34 +475,31 @@
                 totalSize: document.getElementById('total-size')
             };
             
-            console.log('DOM元素初始化完成');
+            // 检查所有必要的元素是否都存在
+            const requiredElements = ['fileInput', 'uploadArea', 'fileList', 'startUpload', 'clearFiles'];
+            for (const elementName of requiredElements) {
+                if (!elements[elementName]) {
+                    console.error(`找不到必要的DOM元素: ${elementName}`);
+                    return false;
+                }
+            }
             return true;
         }
 
-        // 初始化函数 - 修复初始化顺序
+        // 初始化函数
         function init() {
-            console.log('开始初始化...');
-            
-            // 先进行访问验证
-            if (!validateAccess()) {
+            // 先初始化DOM元素引用
+            if (!initializeElements()) {
+                console.error('初始化DOM元素失败，请检查HTML结构');
                 return;
             }
-
-            // 延迟初始化DOM元素，确保DOM完全加载
-            setTimeout(() => {
-                if (initializeElements()) {
-                    initEventListeners();
-                    checkServiceStatus();
-                    console.log('应用初始化完成');
-                } else {
-                    console.error('DOM元素初始化失败');
-                    showError('页面加载失败', '请刷新页面重试');
-                }
-            }, 100);
+            
+            initEventListeners();
+            checkServiceStatus();
         }
 
-        // 其余的函数保持不变...
         function initEventListeners() {
+            // 添加安全检查
             if (!elements.uploadArea || !elements.fileInput) {
                 console.error('DOM元素未正确初始化');
                 return;
@@ -610,12 +539,15 @@
                 );
                 
                 if (!existingFile && selectedFiles.length < CONFIG.MAX_FILES) {
+                    // 提取照片信息和生成组合指纹
                     const fileInfo = await extractFileInfo(file);
                     
                     selectedFiles.push({
                         file: file,
                         status: 'pending',
                         progress: 0,
+                        fingerprint: null,
+                        combinedFingerprint: fileInfo.combinedFingerprint,
                         fileId: null,
                         error: null,
                         fileInfo: fileInfo
@@ -633,18 +565,40 @@
             elements.fileInput.value = '';
         }
 
-        // 提取照片信息
+        // 提取照片信息 - 增强版本，包含组合指纹生成
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
                 EXIF.getData(file, function() {
                     try {
+                        // 获取所有EXIF数据
                         const allExifData = EXIF.getAllTags(this);
+                        console.log('完整EXIF数据:', allExifData);
+                        
+                        // 提取GPS信息
                         const gpsInfo = extractGPSInfo(allExifData);
+                        
+                        // 提取时间信息
                         const timeInfo = extractTimeInfo(allExifData, file);
+                        
+                        // 提取EXIF特征
+                        const exifSignature = extractExifSignature(allExifData, file);
+                        
+                        // 生成视觉指纹
+                        const visualHash = generateVisualHash(file, allExifData);
+                        
+                        // 生成组合指纹
+                        const combinedFingerprint = generateCombinedFingerprint(
+                            visualHash, 
+                            exifSignature, 
+                            timeInfo.earliestTime
+                        );
                         
                         resolve({
                             ...gpsInfo,
-                            ...timeInfo
+                            ...timeInfo,
+                            exifSignature: exifSignature,
+                            visualHash: visualHash,
+                            combinedFingerprint: combinedFingerprint
                         });
                     } catch (error) {
                         console.error('提取EXIF信息失败:', error);
@@ -653,7 +607,14 @@
                             latitude: null,
                             longitude: null,
                             earliestTime: null,
-                            hasTime: false
+                            hasTime: false,
+                            exifSignature: {},
+                            visualHash: generateFallbackVisualHash(file),
+                            combinedFingerprint: generateCombinedFingerprint(
+                                generateFallbackVisualHash(file),
+                                {},
+                                null
+                            )
                         });
                     }
                 });
@@ -668,12 +629,29 @@
                 longitude: null
             };
             
+            // 检查是否存在GPS数据
             if (exifData.GPSLatitude && exifData.GPSLongitude && 
                 exifData.GPSLatitudeRef && exifData.GPSLongitudeRef) {
                 
+                console.log('找到GPS坐标:', {
+                    latitude: exifData.GPSLatitude,
+                    longitude: exifData.GPSLongitude,
+                    latRef: exifData.GPSLatitudeRef,
+                    longRef: exifData.GPSLongitudeRef
+                });
+                
                 gpsInfo.hasGPS = true;
+                
+                // 转换GPS坐标为十进制
                 gpsInfo.latitude = convertGPSCoordinate(exifData.GPSLatitude, exifData.GPSLatitudeRef);
                 gpsInfo.longitude = convertGPSCoordinate(exifData.GPSLongitude, exifData.GPSLongitudeRef);
+                
+                console.log('转换后的GPS坐标:', {
+                    latitude: gpsInfo.latitude,
+                    longitude: gpsInfo.longitude
+                });
+            } else {
+                console.log('未找到GPS坐标数据');
             }
             
             return gpsInfo;
@@ -686,12 +664,15 @@
             }
             
             try {
+                // GPS坐标格式：度、分、秒
                 const degrees = coord[0];
                 const minutes = coord[1];
                 const seconds = coord[2];
                 
+                // 转换为十进制
                 let decimal = degrees + minutes / 60 + seconds / 3600;
                 
+                // 根据参考方向调整正负
                 if (ref === 'S' || ref === 'W') {
                     decimal = -decimal;
                 }
@@ -707,18 +688,22 @@
         function extractTimeInfo(exifData, file) {
             const times = {};
             
+            // EXIF拍摄时间（最准确）
             if (exifData.DateTimeOriginal) {
                 times.exifTime = parseEXIFDate(exifData.DateTimeOriginal);
             }
             
+            // EXIF创建时间
             if (exifData.DateTime) {
                 times.exifCreateTime = parseEXIFDate(exifData.DateTime);
             }
             
+            // 文件修改时间
             if (file.lastModified) {
                 times.lastModified = new Date(file.lastModified).toISOString();
             }
             
+            // 选择最早的时间
             const earliestTime = getEarliestTime(times);
             
             return {
@@ -730,6 +715,7 @@
         // 解析EXIF日期格式
         function parseEXIFDate(dateString) {
             try {
+                // EXIF日期格式: "YYYY:MM:DD HH:MM:SS"
                 const parts = dateString.split(' ');
                 const datePart = parts[0].replace(/:/g, '-');
                 const timePart = parts[1];
@@ -748,7 +734,10 @@
                 return null;
             }
             
+            // 将时间字符串转换为Date对象进行比较
             const timeDates = validTimes.map(time => new Date(time));
+            
+            // 找到最早的时间
             const earliestDate = timeDates.reduce((earliest, current) => {
                 return current < earliest ? current : earliest;
             });
@@ -756,8 +745,86 @@
             return earliestDate.toISOString();
         }
 
+        // 提取EXIF特征签名
+        function extractExifSignature(exifData, file) {
+            const signature = {
+                // 设备信息
+                make: exifData.Make || 'unknown',
+                model: exifData.Model || 'unknown',
+                software: exifData.Software || 'unknown',
+                
+                // 拍摄参数
+                exposureTime: exifData.ExposureTime || 'unknown',
+                fNumber: exifData.FNumber || 'unknown',
+                iso: exifData.ISOSpeedRatings || 'unknown',
+                focalLength: exifData.FocalLength || 'unknown',
+                
+                // 图像信息
+                imageWidth: exifData.PixelXDimension || exifData.ImageWidth || 0,
+                imageHeight: exifData.PixelYDimension || exifData.ImageHeight || 0,
+                orientation: exifData.Orientation || 1,
+                
+                // 文件信息
+                fileSize: file.size,
+                fileType: file.type || 'unknown',
+                
+                // 计算特征
+                dimensions: `${exifData.PixelXDimension || exifData.ImageWidth || 0}x${exifData.PixelYDimension || exifData.ImageHeight || 0}`,
+                aspectRatio: exifData.PixelXDimension && exifData.PixelYDimension ? 
+                    (exifData.PixelXDimension / exifData.PixelYDimension).toFixed(3) : 'unknown'
+            };
+            
+            console.log('生成的EXIF特征签名:', signature);
+            return signature;
+        }
+
+        // 生成视觉指纹（基于文件特征）
+        function generateVisualHash(file, exifData) {
+            try {
+                // 使用图像尺寸、文件大小、EXIF特征等生成视觉指纹
+                const width = exifData.PixelXDimension || exifData.ImageWidth || 0;
+                const height = exifData.PixelYDimension || exifData.ImageHeight || 0;
+                const fileSize = file.size;
+                const aspectRatio = width && height ? (width / height).toFixed(3) : '0';
+                
+                // 基于特征生成稳定的视觉指纹
+                const sizeCategory = fileSize > 10000000 ? 'large' : fileSize > 5000000 ? 'medium' : 'small';
+                const resolutionCategory = width * height > 10000000 ? 'high' : width * height > 5000000 ? 'medium' : 'low';
+                
+                const visualHash = `vis_${sizeCategory}_${resolutionCategory}_${width}_${height}_${aspectRatio}`;
+                
+                console.log('生成的视觉指纹:', visualHash, {
+                    width, height, fileSize, aspectRatio, sizeCategory, resolutionCategory
+                });
+                
+                return visualHash;
+            } catch (error) {
+                console.error('生成视觉指纹失败:', error);
+                return generateFallbackVisualHash(file);
+            }
+        }
+
+        // 生成备用视觉指纹
+        function generateFallbackVisualHash(file) {
+            return `vis_fallback_${file.size}_${file.lastModified}_${Date.now().toString(36)}`;
+        }
+
+        // 生成组合指纹
+        function generateCombinedFingerprint(visualHash, exifSignature, captureTime) {
+            const combinedFingerprint = {
+                visualHash: visualHash,
+                exifSignature: exifSignature,
+                captureTime: captureTime || new Date().toISOString(),
+                timestamp: Date.now()
+            };
+            
+            console.log('生成的组合指纹:', combinedFingerprint);
+            return combinedFingerprint;
+        }
+
         // 更新文件列表
         function updateFileList() {
+            // 只显示未取消的文件
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
             
             if (visibleFiles.length === 0) {
@@ -772,19 +839,29 @@
                 const errorInfo = fileData.error ? 
                     `<div style="color: #dc3545; font-size: 12px; margin-top: 6px;">错误: ${fileData.error}</div>` : '';
                 
+                // 时间信息显示
                 const timeInfo = fileData.fileInfo.hasTime ? 
                     `<div class="file-meta">📅 ${new Date(fileData.fileInfo.earliestTime).toLocaleDateString()}</div>` : 
                     `<div class="file-meta">⏰ 无时间信息</div>`;
                 
+                // GPS信息显示
                 const gpsInfo = fileData.fileInfo.hasGPS ? 
                     `<div class="file-meta">📍 有地址信息</div>` : 
                     `<div class="file-meta">📍 无地址信息</div>`;
                 
+                // EXIF特征显示
+                const exifInfo = fileData.fileInfo.exifSignature ? 
+                    `<div class="file-meta">📐 ${fileData.fileInfo.exifSignature.dimensions || '未知尺寸'}</div>` : 
+                    `<div class="file-meta">📐 未知尺寸</div>`;
+                
+                // 文件大小
                 const sizeInfo = `<div class="file-meta">📦 ${formatFileSize(fileData.file.size)}</div>`;
                 
+                // 取消按钮
                 const cancelButton = (fileData.status === 'uploading' || fileData.status === 'pending') ? 
                     `<button class="cancel-btn" data-filename="${fileData.file.name}" title="取消上传">❌</button>` : '';
                 
+                // 进度条
                 const progressBar = (fileData.status === 'uploading' || fileData.status === 'pending') ? 
                     `<div class="progress-container">
                         <div class="progress-bar">
@@ -800,6 +877,7 @@
                         <div class="file-name">${fileData.file.name}</div>
                         ${timeInfo}
                         ${gpsInfo}
+                        ${exifInfo}
                         ${sizeInfo}
                         ${errorInfo}
                         ${progressBar}
@@ -843,18 +921,22 @@
         function cancelFileUpload(fileName) {
             const fileData = selectedFiles.find(f => f.file.name === fileName);
             if (fileData && (fileData.status === 'uploading' || fileData.status === 'pending')) {
+                // 如果是当前正在上传的文件，取消上传
                 if (currentUploadController && fileData.status === 'uploading') {
                     currentUploadController.abort();
                     currentUploadController = null;
                 }
                 
+                // 标记为已取消
                 fileData.status = 'cancelled';
                 fileData.error = '上传已取消';
                 fileData.progress = 0;
                 
+                // 更新界面
                 updateFileList();
                 updateStats();
                 
+                // 如果正在上传过程中取消，自动开始下一个文件
                 if (uploadInProgress) {
                     setTimeout(() => {
                         continueUpload();
@@ -906,6 +988,7 @@
             if (pendingFiles.length === 0) return;
             
             uploadInProgress = true;
+            currentUploadIndex = 0;
             updateUploadButton();
             
             await continueUpload();
@@ -917,6 +1000,7 @@
             const pendingFiles = visibleFiles.filter(f => f.status === 'pending' || f.status === 'error');
             
             if (pendingFiles.length === 0) {
+                // 所有文件都处理完了
                 uploadInProgress = false;
                 currentUploadController = null;
                 updateUploadButton();
@@ -927,6 +1011,7 @@
                 return;
             }
             
+            // 上传下一个文件
             const fileData = pendingFiles[0];
             currentUploadController = new AbortController();
             
@@ -938,13 +1023,15 @@
                 currentUploadController = null;
             }
             
+            // 继续上传下一个文件
             setTimeout(() => {
                 continueUpload();
             }, 100);
         }
 
-        // 上传单个文件
+        // 上传单个文件 - 修改为传递组合指纹
         async function uploadFile(fileData, signal) {
+            // 更新状态为上传中
             fileData.status = 'uploading';
             fileData.error = null;
             fileData.progress = 0;
@@ -953,10 +1040,15 @@
             const fileSize = fileData.file.size;
             const totalChunks = Math.ceil(fileSize / CONFIG.CHUNK_SIZE);
             
+            if (!fileData.fingerprint) {
+                fileData.fingerprint = await generateFileFingerprint(fileData.file);
+            }
+            
             let retryCount = 0;
             
             while (retryCount <= CONFIG.MAX_RETRIES) {
                 try {
+                    // 上传所有分块
                     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
                         if (signal.aborted) {
                             throw new DOMException('上传已取消', 'AbortError');
@@ -968,11 +1060,14 @@
                         
                         const chunkBase64 = await readChunkAsBase64(chunk);
                         
+                        // 上传分块数据，包含组合指纹
                         const uploadData = {
                             action: 'upload_chunk',
                             chunkIndex: chunkIndex,
                             totalChunks: totalChunks,
                             fileName: fileData.file.name,
+                            fingerprint: fileData.fingerprint,
+                            combinedFingerprint: fileData.combinedFingerprint, // 新增组合指纹
                             data: chunkBase64,
                             fileSize: fileSize,
                             gpsLatitude: fileData.fileInfo.latitude,
@@ -990,9 +1085,12 @@
                         updateFileList();
                     }
                     
+                    // 完成上传，传递组合指纹
                     const completeData = {
                         action: 'complete_upload',
                         fileName: fileData.file.name,
+                        fingerprint: fileData.fingerprint,
+                        combinedFingerprint: fileData.combinedFingerprint, // 新增组合指纹
                         totalChunks: totalChunks,
                         fileSize: fileSize,
                         gpsLatitude: fileData.fileInfo.latitude,
@@ -1031,10 +1129,33 @@
                         console.warn(`文件 ${fileData.file.name} 上传失败，第 ${retryCount} 次重试...`);
                         fileData.progress = 0;
                         updateFileList();
+                        
+                        // 等待一段时间后重试
                         await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
                     }
                 }
             }
+        }
+
+        // 生成文件指纹
+        async function generateFileFingerprint(file) {
+            return new Promise((resolve) => {
+                const spark = new SparkMD5.ArrayBuffer();
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    spark.append(e.target.result);
+                    const hash = spark.end();
+                    resolve(hash);
+                };
+                
+                reader.onerror = () => {
+                    const backupHash = 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    resolve(backupHash);
+                };
+                
+                reader.readAsArrayBuffer(file);
+            });
         }
 
         // 读取分块为Base64
@@ -1111,6 +1232,7 @@
         // 清空文件
         function clearFiles() {
             if (!uploadInProgress) {
+                // 取消当前上传
                 if (currentUploadController) {
                     currentUploadController.abort();
                     currentUploadController = null;
@@ -1136,6 +1258,7 @@
                     <div>✅ 成功上传: ${success} 个文件</div>
                     <div>❌ 上传失败: ${error} 个文件</div>
                     <div>📍 含地址信息: ${withAddressCount} 个文件</div>
+                    <div>🔍 已生成组合指纹: ${success} 个文件</div>
                     ${error > 0 ? '<div style="color: #dc3545; margin-top: 10px;">请检查网络连接后重试失败的文件</div>' : ''}
                 </div>
             `;
@@ -1163,10 +1286,11 @@
             });
         }
 
-        // 启动应用
+        // 启动应用 - 确保DOM完全加载后再执行
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
+            // DOM已经加载完成
             init();
         }
     </script>
