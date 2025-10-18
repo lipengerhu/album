@@ -35,6 +35,9 @@
             
             // 验证成功，页面正常显示
             console.log('验证成功，页面正常加载');
+            
+            // 在签名验证成功后初始化应用
+            setTimeout(init, 100);
         });
         
         function verifySignature(timestamp, receivedSignature) {
@@ -488,12 +491,15 @@
 
         // 初始化函数
         function init() {
+            console.log('开始初始化应用...');
+            
             // 先初始化DOM元素引用
             if (!initializeElements()) {
                 console.error('初始化DOM元素失败，请检查HTML结构');
                 return;
             }
             
+            console.log('DOM元素初始化成功');
             initEventListeners();
             checkServiceStatus();
         }
@@ -1190,11 +1196,6 @@
                 handleFileSelect(event);
             });
         }
-
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            init();
-        });
     </script>
 </body>
 </html>
