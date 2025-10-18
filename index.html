@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>照片上传</title>
     <style>
+        /* 你的原有样式保持不变 */
         * { 
             margin: 0; 
             padding: 0; 
@@ -268,6 +269,36 @@
             margin-left: 12px;
         }
 
+        .error-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .error-message {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .error-title {
+            color: #e74c3c;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .error-detail {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
         @media (max-width: 380px) {
             .container {
                 padding: 16px;
@@ -292,58 +323,72 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>照片上传</h1>
-            <p class="subtitle">自动提取照片信息和位置</p>
-        </div>
-        
-        <div class="service-status" id="service-status">
-            检查服务状态...
-        </div>
-        
-        <div class="upload-area" id="upload-area">
-            <div class="upload-icon">📷</div>
-            <div class="upload-text">点击选择照片</div>
-            <div class="upload-hint">支持JPG、PNG等格式，自动提取GPS和EXIF信息</div>
-            <input type="file" id="file-input" accept="image/*" multiple>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-value" id="total-files">0</div>
-                <div class="stat-label">总文件</div>
+    <div id="app-content" style="display: none;">
+        <div class="container">
+            <div class="header">
+                <h1>照片上传</h1>
+                <p class="subtitle">自动提取照片信息和位置</p>
             </div>
-            <div class="stat-item">
-                <div class="stat-value" id="with-address">0</div>
-                <div class="stat-label">含地址信息</div>
+            
+            <div class="service-status" id="service-status">
+                检查服务状态...
             </div>
-            <div class="stat-item">
-                <div class="stat-value" id="total-size">0MB</div>
-                <div class="stat-label">总大小</div>
+            
+            <div class="upload-area" id="upload-area">
+                <div class="upload-icon">📷</div>
+                <div class="upload-text">点击选择照片</div>
+                <div class="upload-hint">支持JPG、PNG等格式，自动提取GPS和EXIF信息</div>
+                <input type="file" id="file-input" accept="image/*" multiple>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="total-files">0</div>
+                    <div class="stat-label">总文件</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="with-address">0</div>
+                    <div class="stat-label">含地址信息</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="total-size">0MB</div>
+                    <div class="stat-label">总大小</div>
+                </div>
+            </div>
+            
+            <div class="file-list" id="file-list">
+                <div class="empty-state" id="empty-state">
+                    暂无照片
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn" id="start-upload" disabled>开始上传</button>
+                <button class="btn btn-clear" id="clear-files">清空列表</button>
+            </div>
+            
+            <div class="result-info" id="result-info">
+                <div class="result-title">上传结果</div>
+                <div id="result-content"></div>
             </div>
         </div>
-        
-        <div class="file-list" id="file-list">
-            <div class="empty-state" id="empty-state">
-                暂无照片
+    </div>
+
+    <div id="error-content" style="display: none;">
+        <div class="error-container">
+            <div class="error-message">
+                <h1 class="error-title" id="error-title">访问被拒绝</h1>
+                <p class="error-detail" id="error-detail">请使用小程序生成的正确链接访问</p>
+                <p style="font-size: 14px; color: #999; margin-top: 20px;">
+                    如需上传照片，请在小程序中生成专属链接
+                </p>
             </div>
-        </div>
-        
-        <div class="controls">
-            <button class="btn" id="start-upload" disabled>开始上传</button>
-            <button class="btn btn-clear" id="clear-files">清空列表</button>
-        </div>
-        
-        <div class="result-info" id="result-info">
-            <div class="result-title">上传结果</div>
-            <div id="result-content"></div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <script>
-        // 配置信息 - 串行上传
+        // 配置信息
         const CONFIG = {
             CLOUD_FUNCTION_URL: 'https://cloud1-4g2pwcs3890409d1-1359729503.ap-shanghai.app.tcloudbase.com/album',
             MAX_FILES: 50,
@@ -355,30 +400,141 @@
         let selectedFiles = [];
         let uploadInProgress = false;
         let currentUploadController = null;
-        let currentUploadIndex = 0;
 
-        // DOM元素
+        // DOM元素引用
         let elements = {};
 
-        // 初始化函数 - 修复DOM初始化问题
-        function init() {
-            // 延迟初始化DOM元素，确保DOM完全加载
-            setTimeout(() => {
-                initializeElements();
-                initEventListeners();
-                checkServiceStatus();
-            }, 100);
+        // 你的原有签名验证代码 - 完全保持原样
+        function verifySignature(timestamp, receivedSignature) {
+            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
+            const now = Math.floor(Date.now() / 1000);
+            const requestTime = parseInt(timestamp);
+            const timeDiff = Math.abs(now - requestTime);
+            
+            if (timeDiff > 300) {
+                return false;
+            }
+            
+            const expectedSignature = generateSignature(timestamp);
+            console.log('签名验证:', {
+                received: receivedSignature,
+                expected: expectedSignature,
+                timestamp: timestamp,
+                timeDiff: timeDiff + '秒'
+            });
+            
+            return receivedSignature === expectedSignature;
         }
 
-        // 初始化DOM元素引用
+        // 你的原有生成签名函数 - 完全保持原样
+        function generateSignature(timestamp) {
+            const SECRET_KEY = 'album_secret_key_2024_12_01_v2';
+            
+            function md5(input) {
+                let hash = 0;
+                for (let i = 0; i < input.length; i++) {
+                    const char = input.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                return Math.abs(hash).toString(36) + input.length.toString(36);
+            }
+            
+            return md5(SECRET_KEY + timestamp);
+        }
+
+        // 你的原有时间戳使用检查 - 完全保持原样
+        function isTimestampUsed(timestamp) {
+            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
+            const isUsed = usedTimestamps.includes(parseInt(timestamp));
+            console.log('时间戳使用检查:', { timestamp, isUsed, usedTimestamps });
+            return isUsed;
+        }
+
+        // 你的原有标记时间戳为已使用 - 完全保持原样
+        function markTimestampAsUsed(timestamp) {
+            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
+            usedTimestamps.push(parseInt(timestamp));
+            
+            // 只保留最近20个时间戳，避免存储过多
+            const recentTimestamps = usedTimestamps.slice(-20);
+            localStorage.setItem('usedTimestamps', JSON.stringify(recentTimestamps));
+            console.log('标记时间戳为已使用:', { timestamp, recentTimestamps });
+        }
+
+        // 显示错误页面
+        function showError(title, message) {
+            document.getElementById('error-title').textContent = title;
+            document.getElementById('error-detail').textContent = message;
+            document.getElementById('app-content').style.display = 'none';
+            document.getElementById('error-content').style.display = 'block';
+        }
+
+        // 显示应用页面
+        function showApp() {
+            document.getElementById('error-content').style.display = 'none';
+            document.getElementById('app-content').style.display = 'block';
+        }
+
+        // 页面加载时的验证 - 使用你的原有逻辑
+        function validateAccess() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const timestamp = urlParams.get('t');
+            const signature = urlParams.get('s');
+            
+            console.log('URL参数:', { timestamp, signature });
+            
+            // 检查链接参数
+            if (!timestamp || !signature) {
+                showError('访问链接无效', '请使用小程序生成的正确链接访问');
+                return false;
+            }
+            
+            // 检查链接是否已被使用
+            if (isTimestampUsed(timestamp)) {
+                showError('链接已失效', '该链接已被使用，请重新生成新链接');
+                return false;
+            }
+            
+            // 验证签名
+            const isValid = verifySignature(timestamp, signature);
+            
+            if (!isValid) {
+                showError('链接已过期或无效', '请在小程序中重新生成上传链接');
+                return false;
+            }
+            
+            // 标记链接为已使用
+            markTimestampAsUsed(timestamp);
+            
+            // 验证成功，显示应用
+            showApp();
+            console.log('验证成功，页面正常加载');
+            return true;
+        }
+
+        // 修复DOM元素初始化问题
         function initializeElements() {
+            // 使用更健壮的选择器，确保元素存在
+            const fileInput = document.getElementById('file-input');
+            const uploadArea = document.getElementById('upload-area');
+            const fileList = document.getElementById('file-list');
+            const startUpload = document.getElementById('start-upload');
+            const clearFiles = document.getElementById('clear-files');
+            
+            // 检查必要的DOM元素是否存在
+            if (!fileInput || !uploadArea || !fileList || !startUpload || !clearFiles) {
+                console.error('必要的DOM元素未找到');
+                return false;
+            }
+            
             elements = {
-                fileInput: document.getElementById('file-input'),
-                uploadArea: document.getElementById('upload-area'),
-                fileList: document.getElementById('file-list'),
+                fileInput: fileInput,
+                uploadArea: uploadArea,
+                fileList: fileList,
                 emptyState: document.getElementById('empty-state'),
-                startUpload: document.getElementById('start-upload'),
-                clearFiles: document.getElementById('clear-files'),
+                startUpload: startUpload,
+                clearFiles: clearFiles,
                 resultInfo: document.getElementById('result-info'),
                 resultContent: document.getElementById('result-content'),
                 serviceStatus: document.getElementById('service-status'),
@@ -387,9 +543,33 @@
                 totalSize: document.getElementById('total-size')
             };
             
-            console.log('DOM元素初始化完成:', elements);
+            console.log('DOM元素初始化完成');
+            return true;
         }
 
+        // 初始化函数 - 修复初始化顺序
+        function init() {
+            console.log('开始初始化...');
+            
+            // 先进行访问验证
+            if (!validateAccess()) {
+                return;
+            }
+
+            // 延迟初始化DOM元素，确保DOM完全加载
+            setTimeout(() => {
+                if (initializeElements()) {
+                    initEventListeners();
+                    checkServiceStatus();
+                    console.log('应用初始化完成');
+                } else {
+                    console.error('DOM元素初始化失败');
+                    showError('页面加载失败', '请刷新页面重试');
+                }
+            }, 100);
+        }
+
+        // 其余的函数保持不变...
         function initEventListeners() {
             if (!elements.uploadArea || !elements.fileInput) {
                 console.error('DOM元素未正确初始化');
@@ -430,7 +610,6 @@
                 );
                 
                 if (!existingFile && selectedFiles.length < CONFIG.MAX_FILES) {
-                    // 提取照片信息（简化版本）
                     const fileInfo = await extractFileInfo(file);
                     
                     selectedFiles.push({
@@ -454,17 +633,13 @@
             elements.fileInput.value = '';
         }
 
-        // 提取照片信息 - 简化版本
+        // 提取照片信息
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
                 EXIF.getData(file, function() {
                     try {
                         const allExifData = EXIF.getAllTags(this);
-                        
-                        // 提取GPS信息
                         const gpsInfo = extractGPSInfo(allExifData);
-                        
-                        // 提取时间信息
                         const timeInfo = extractTimeInfo(allExifData, file);
                         
                         resolve({
@@ -731,7 +906,6 @@
             if (pendingFiles.length === 0) return;
             
             uploadInProgress = true;
-            currentUploadIndex = 0;
             updateUploadButton();
             
             await continueUpload();
@@ -769,7 +943,7 @@
             }, 100);
         }
 
-        // 上传单个文件 - 简化版本
+        // 上传单个文件
         async function uploadFile(fileData, signal) {
             fileData.status = 'uploading';
             fileData.error = null;
@@ -783,7 +957,6 @@
             
             while (retryCount <= CONFIG.MAX_RETRIES) {
                 try {
-                    // 上传所有分块
                     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
                         if (signal.aborted) {
                             throw new DOMException('上传已取消', 'AbortError');
@@ -817,7 +990,6 @@
                         updateFileList();
                     }
                     
-                    // 完成上传
                     const completeData = {
                         action: 'complete_upload',
                         fileName: fileData.file.name,
