@@ -410,7 +410,7 @@
         }
 
         // 增强的安全Token验证
-        function verifySecureToken(timestamp, receivedToken, signature) {
+        function verifySecureToken(timestamp, receivedToken, openid) {
   const now = Math.floor(Date.now() / 1000);
   const requestTime = parseInt(timestamp);
   
@@ -418,7 +418,8 @@
     当前时间: now,
     请求时间: requestTime,
     时间差: Math.abs(now - requestTime),
-    token长度: receivedToken ? receivedToken.length : 0
+    token长度: receivedToken ? receivedToken.length : 0,
+    openid: openid ? '已提供' : '未提供'
   });
   
   // 1. 严格的时间验证
@@ -427,20 +428,20 @@
     return false;
   }
   
-  // 2. 必需参数检查（移除了openid检查）
-  if (!timestamp || !receivedToken || !signature) {
+  // 2. 必需参数检查
+  if (!timestamp || !receivedToken || !openid) {
     console.log('安全验证失败: 参数不完整');
     return false;
   }
   
-  // 3. Token长度验证
-  if (receivedToken.length < 12) {
-    console.log('安全验证失败: Token长度不足');
+  // 3. Token长度验证（12位：6位哈希 + 6位随机）
+  if (receivedToken.length !== 12) {
+    console.log('安全验证失败: Token长度无效');
     return false;
   }
   
   // 4. Token格式验证
-  const tokenPattern = /^[a-zA-Z0-9]{12,}$/;
+  const tokenPattern = /^[a-zA-Z0-9]{12}$/;
   if (!tokenPattern.test(receivedToken)) {
     console.log('安全验证失败: Token格式无效');
     return false;
@@ -450,33 +451,28 @@
   return true;
 }
 
-        // 显示安全信息
-       function updateSecurityInfo(timestamp) {
-  const securityDetails = document.getElementById('security-details');
-  const requestTime = new Date(parseInt(timestamp) * 1000);
-  const expiryTime = new Date((parseInt(timestamp) + 600) * 1000);
-  
-  securityDetails.innerHTML = `
-    <div style="margin-bottom: 4px;">🔐 加密链接已验证</div>
-    <div style="margin-bottom: 4px;">链接生成: ${requestTime.toLocaleTimeString()}</div>
-    <div style="font-size: 12px; color: #666;">有效期至: ${expiryTime.toLocaleTimeString()}</div>
-    <div style="font-size: 12px; color: #666; margin-top: 4px;">用户身份信息已加密在Token中</div>
-  `;
-}
-
-        // 页面初始化
-        document.addEventListener('DOMContentLoaded', function() {
+// 页面初始化
+document.addEventListener('DOMContentLoaded', function() {
   const urlParams = new URLSearchParams(window.location.search);
   const timestamp = urlParams.get('t');
   const token = urlParams.get('token');
-  const signature = urlParams.get('sig');
+  const openid = urlParams.get('oid');
   
-  if (!verifySecureToken(timestamp, token, signature)) {
-    showError('安全验证失败', '此链接已过期或存在安全风险，请从小程序重新生成上传链接');
+  console.log('URL参数:', { timestamp, token, openid });
+  
+  // 检查链接参数
+  if (!timestamp || !token || !openid) {
+    showError('访问链接无效', '请使用小程序生成的正确链接访问');
     return;
   }
   
-  console.log('安全验证成功，页面正常加载');
+  // Token验证
+  if (!verifySecureToken(timestamp, token, openid)) {
+    showError('链接已过期或无效', '请在小程序中重新生成上传链接');
+    return;
+  }
+  
+  console.log('Token验证成功，页面正常加载');
   setTimeout(init, 100);
 });
 
@@ -1033,27 +1029,54 @@
         }
 
         // 调用云函数
-        async function callCloudFunction(data, signal) {
-  const urlParams = new URLSearchParams(window.location.search);
-  const timestamp = urlParams.get('t');
-  const token = urlParams.get('token');
-  const signature = urlParams.get('sig');
-  
-  const requestData = {
-    ...data,
-    timestamp: timestamp,
-    token: token,
-    signature: signature
-    // 移除了 openid 字段，因为云函数现在从Token中提取
-  };
-  
-  console.log('安全云函数请求:', {
-    action: data.action,
-    timestamp: timestamp,
-    token: token ? token.substring(0, 8) + '...' : 'null',
-    signature: signature ? signature.substring(0, 8) + '...' : 'null'
-  });
-                }
+       async function callCloudFunction(data, signal) {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const timestamp = urlParams.get('t');
+    const token = urlParams.get('token');
+    const openid = urlParams.get('oid');
+    
+    const requestData = {
+      ...data,
+      timestamp: timestamp,
+      token: token,
+      openid: openid
+    };
+    
+    console.log('云函数请求数据:', {
+      action: requestData.action,
+      timestamp: requestData.timestamp,
+      token: requestData.token,
+      openid: requestData.openid ? requestData.openid.substring(0, 8) + '...' : 'null'
+    });
+
+    const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestData),
+      signal: signal
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    return result;
+    
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw error;
+    }
+    
+    return {
+      success: false,
+      message: '网络请求失败: ' + error.message
+    };
+  }
+}
 
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
                     method: 'POST',
@@ -1182,5 +1205,6 @@
     </script>
 </body>
 </html>
+
 
 
