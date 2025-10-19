@@ -482,8 +482,7 @@ document.addEventListener('DOMContentLoaded',async function() {
   
   console.log('✅ Token验证成功，开始初始化页面');
   
-  // 更新安全信息
-  updateSecurityInfo(timestamp, openid);
+ 
   
   // 初始化页面
   setTimeout(init, 100);
@@ -530,21 +529,7 @@ document.addEventListener('DOMContentLoaded',async function() {
             return true;
         }
 
-        // 初始化函数
-       function updateSecurityInfo(timestamp, openid) {
-  const securityDetails = document.getElementById('security-details');
-  const requestTime = new Date(parseInt(timestamp) * 1000);
-  const expiryTime = new Date((parseInt(timestamp) + 600) * 1000);
-  
-  if (securityDetails) {
-    securityDetails.innerHTML = `
-      <div style="margin-bottom: 4px;">🔐 安全验证通过</div>
-      <div style="margin-bottom: 4px;">用户: ${openid.substring(0, 8)}***</div>
-      <div style="margin-bottom: 4px;">链接生成: ${requestTime.toLocaleTimeString()}</div>
-      <div style="font-size: 12px; color: #666;">有效期至: ${expiryTime.toLocaleTimeString()}</div>
-    `;
-  }
-}
+     
 
         function initEventListeners() {
             if (!elements.uploadArea || !elements.fileInput) {
@@ -1106,35 +1091,7 @@ document.addEventListener('DOMContentLoaded',async function() {
       message: '网络请求失败: ' + error.message
     };
   }
-}
-
-                const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData),
-                    signal: signal
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
-                }
-                
-                const result = await response.json();
-                return result;
-                
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    throw error;
-                }
-                
-                return {
-                    success: false,
-                    message: '网络请求失败: ' + error.message
-                };
-            }
-        }
+}           
 
         // 检查服务状态
         async function checkServiceStatus() {
@@ -1247,6 +1204,7 @@ document.addEventListener('DOMContentLoaded',async function() {
     </script>
 </body>
 </html>
+
 
 
 
