@@ -528,7 +528,27 @@ document.addEventListener('DOMContentLoaded',async function() {
             }
             return true;
         }
-
+// 初始化函数
+function init() {
+    console.log('开始初始化页面...');
+    
+    // 初始化DOM元素
+    if (!initializeElements()) {
+        console.error('页面初始化失败：DOM元素未正确加载');
+        return;
+    }
+    
+    // 初始化事件监听
+    initEventListeners();
+    
+    // 检查服务状态
+    checkServiceStatus();
+    
+    // 更新上传按钮状态
+    updateUploadButton();
+    
+    console.log('页面初始化完成');
+}
      
 
         function initEventListeners() {
@@ -1204,6 +1224,7 @@ document.addEventListener('DOMContentLoaded',async function() {
     </script>
 </body>
 </html>
+
 
 
 
