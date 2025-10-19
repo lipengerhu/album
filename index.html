@@ -6,107 +6,127 @@
     <title>照片上传</title>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const timestamp = urlParams.get('t');
-            const signature = urlParams.get('s');
-            
-            console.log('URL参数:', { timestamp, signature });
-            
-            // 检查链接参数
-            if (!timestamp || !signature) {
-                showError('访问链接无效', '请使用小程序生成的正确链接访问');
-                return;
-            }
-            
-            
-          
-            
-            // 验证签名 - 简化验证逻辑
-            const isValid = verifySignature(timestamp, signature);
-            
-            if (!isValid) {
-                showError('链接已过期或无效', '请在小程序中重新生成上传链接');
-                return;
-            }
-            
-            // 标记链接为已使用
-            markTimestampAsUsed(timestamp);
-            
-            // 验证成功，页面正常显示
-            console.log('验证成功，页面正常加载');
-            
-            // 在签名验证成功后初始化应用
-            setTimeout(init, 100);
-        });
+    const urlParams = new URLSearchParams(window.location.search);
+    const timestamp = urlParams.get('t');
+    const token = urlParams.get('token');
+    
+    console.log('URL参数:', { timestamp, token });
+    
+    // 检查链接参数
+    if (!timestamp || !token) {
+        showError('访问链接无效', '请使用小程序生成的正确链接访问');
+        return;
+    }
+    
+    // Token验证
+    if (!verifyToken(timestamp, token)) {
+        showError('链接已过期或无效', '请在小程序中重新生成上传链接');
+        return;
+    }
+    
+    console.log('Token验证成功，页面正常加载');
+    setTimeout(init, 100);
+});
         
-     function verifySignature(timestamp, receivedSignature) {
+     // 替换原来的verifySignature函数
+function verifyToken(timestamp, receivedToken) {
     const now = Math.floor(Date.now() / 1000);
     const requestTime = parseInt(timestamp);
-
-    // 1. 严格的时间验证（5分钟）
+    
+    console.log('时间验证:', {
+        当前时间: now,
+        请求时间: requestTime,
+        时间差: Math.abs(now - requestTime)
+    });
+    
+    // 时间验证（5分钟）
     if (Math.abs(now - requestTime) > 300) {
-        console.log('时间验证失败: 链接已过期');
+        console.log('时间验证失败: 时间差过大');
         return false;
     }
-
-    // 2. 严格的签名长度验证
-    // 注意：这个最小长度 15 是基于我们新的签名算法。
-    // 如果小程序端生成的签名长度变了，这里也要相应调整。
-    if (!receivedSignature || receivedSignature.length < 15) {
-        console.log('签名长度无效: 签名太短或不存在');
+    
+    // Token基础格式验证
+    if (!receivedToken || receivedToken.length < 8) {
+        console.log('Token格式无效');
         return false;
     }
-
-    // 3. 严格的签名格式验证（必须包含我们约定的分隔符）
-    if (!receivedSignature.includes('_')) {
-        console.log('签名格式错误: 缺少分隔符');
-        return false;
-    }
-
-    // 4. 可选的额外强度检查：确保签名由特定字符组成（小写字母、数字、下划线）
-    if (!/^[a-z0-9_]+$/.test(receivedSignature)) {
-        console.log('签名格式错误: 包含非法字符');
-        return false;
-    }
-
-    console.log('✅ HTML端基础验证通过。签名具体内容将在云函数进行最终验证。');
-    // 注意：这里返回 true 只是因为格式、长度、时间等基础检查通过了。
-    // 最关键的身份验证（签名是否由该用户的openid生成）在云函数中完成。
+    
+    console.log('✅ HTML端Token基础验证通过');
     return true;
 }
+
+// 修改初始化部分，处理token参数
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const timestamp = urlParams.get('t');
+    const token = urlParams.get('token');
+    
+    console.log('URL参数:', { timestamp, token });
+    
+    // 检查链接参数
+    if (!timestamp || !token) {
+        showError('访问链接无效', '请使用小程序生成的正确链接访问');
+        return;
+    }
+    
+    // Token验证
+    if (!verifyToken(timestamp, token)) {
+        showError('链接已过期或无效', '请在小程序中重新生成上传链接');
+        return;
+    }
+    
+    console.log('Token验证成功，页面正常加载');
+    setTimeout(init, 100);
+});
+
+// 修改callCloudFunction函数，传递token
+async function callCloudFunction(data, signal) {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const timestamp = urlParams.get('t');
+        const token = urlParams.get('token');
         
-        // 检查时间戳是否已使用
-        function isTimestampUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            const isUsed = usedTimestamps.includes(parseInt(timestamp));
-            console.log('时间戳使用检查:', { timestamp, isUsed, usedTimestamps });
-            return isUsed;
+        const requestData = {
+            ...data,
+            timestamp: timestamp,
+            token: token  // 传递token而不是signature
+        };
+        
+        console.log('云函数请求数据:', {
+            action: requestData.action,
+            timestamp: requestData.timestamp,
+            token: requestData.token
+        });
+
+        const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData),
+            signal: signal
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} ${response.statusText}`);
         }
         
-        // 标记时间戳为已使用
-        function markTimestampAsUsed(timestamp) {
-            const usedTimestamps = JSON.parse(localStorage.getItem('usedTimestamps') || '[]');
-            usedTimestamps.push(parseInt(timestamp));
-            
-            // 只保留最近20个时间戳，避免存储过多
-            const recentTimestamps = usedTimestamps.slice(-20);
-            localStorage.setItem('usedTimestamps', JSON.stringify(recentTimestamps));
-            console.log('标记时间戳为已使用:', { timestamp, recentTimestamps });
+        const result = await response.json();
+        return result;
+        
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw error;
         }
         
-        function showError(title, message) {
-            document.body.innerHTML = `
-                <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f5f5f5; padding: 20px;">
-                    <div style="background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px;">
-                        <h1 style="color: #e74c3c; margin-bottom: 20px; font-size: 24px;">${title}</h1>
-                        <p style="color: #666; line-height: 1.6; margin-bottom: 10px;">${message}</p>
-                        <p style="font-size: 14px; color: #999; margin-top: 20px;">
-                            如需上传照片，请在小程序中生成专属链接
-                        </p>
-                    </div>
-                </div>
-            `;
-        }
+        return {
+            success: false,
+            message: '网络请求失败: ' + error.message
+        };
+    }
+}
+        
+      
     </script>
     <style>
         * { 
@@ -1225,6 +1245,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
