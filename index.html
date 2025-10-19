@@ -410,52 +410,45 @@
         }
 
         // 增强的安全Token验证
-        function verifySecureToken(timestamp, receivedToken, signature, openid) {
-            const now = Math.floor(Date.now() / 1000);
-            const requestTime = parseInt(timestamp);
-            
-            console.log('安全验证:', {
-                当前时间: now,
-                请求时间: requestTime,
-                时间差: Math.abs(now - requestTime),
-                token长度: receivedToken ? receivedToken.length : 0,
-                openid: openid ? '已提供' : '未提供'
-            });
-            
-            // 1. 严格的时间验证
-            if (Math.abs(now - requestTime) > CONFIG.TOKEN_MAX_AGE) {
-                console.log('安全验证失败: 链接已过期');
-                return false;
-            }
-            
-            // 2. 必需参数检查
-            if (!timestamp || !receivedToken || !signature || !openid) {
-                console.log('安全验证失败: 参数不完整');
-                return false;
-            }
-            
-            // 3. Token长度验证
-            if (receivedToken.length < CONFIG.TOKEN_MIN_LENGTH) {
-                console.log('安全验证失败: Token长度不足');
-                return false;
-            }
-            
-            // 4. Token格式验证
-            const tokenPattern = /^[a-zA-Z0-9]{12,}$/;
-            if (!tokenPattern.test(receivedToken)) {
-                console.log('安全验证失败: Token格式无效');
-                return false;
-            }
-            
-            // 5. OpenID格式验证（微信OpenID通常是28位）
-            if (openid.length !== 28) {
-                console.log('安全验证失败: OpenID格式异常');
-                return false;
-            }
-            
-            console.log('✅ 前端安全验证通过');
-            return true;
-        }
+        function verifySecureToken(timestamp, receivedToken, signature) {
+  const now = Math.floor(Date.now() / 1000);
+  const requestTime = parseInt(timestamp);
+  
+  console.log('安全验证:', {
+    当前时间: now,
+    请求时间: requestTime,
+    时间差: Math.abs(now - requestTime),
+    token长度: receivedToken ? receivedToken.length : 0
+  });
+  
+  // 1. 严格的时间验证
+  if (Math.abs(now - requestTime) > 600) {
+    console.log('安全验证失败: 链接已过期');
+    return false;
+  }
+  
+  // 2. 必需参数检查（移除了openid检查）
+  if (!timestamp || !receivedToken || !signature) {
+    console.log('安全验证失败: 参数不完整');
+    return false;
+  }
+  
+  // 3. Token长度验证
+  if (receivedToken.length < 12) {
+    console.log('安全验证失败: Token长度不足');
+    return false;
+  }
+  
+  // 4. Token格式验证
+  const tokenPattern = /^[a-zA-Z0-9]{12,}$/;
+  if (!tokenPattern.test(receivedToken)) {
+    console.log('安全验证失败: Token格式无效');
+    return false;
+  }
+  
+  console.log('✅ 前端安全验证通过');
+  return true;
+}
 
         // 显示安全信息
         function updateSecurityInfo(openid, timestamp) {
@@ -472,26 +465,19 @@
 
         // 页面初始化
         document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const timestamp = urlParams.get('t');
-            const token = urlParams.get('token');
-            const signature = urlParams.get('sig');
-            const openid = urlParams.get('oid');
-            
-            console.log('安全链接参数:', { timestamp, token, signature, openid });
-            
-            // 安全验证
-            if (!verifySecureToken(timestamp, token, signature, openid)) {
-                showError('安全验证失败', '此链接已过期或存在安全风险，请从小程序重新生成上传链接');
-                return;
-            }
-            
-            // 更新安全信息显示
-            updateSecurityInfo(openid, timestamp);
-            
-            console.log('安全验证成功，页面正常加载');
-            setTimeout(init, 100);
-        });
+  const urlParams = new URLSearchParams(window.location.search);
+  const timestamp = urlParams.get('t');
+  const token = urlParams.get('token');
+  const signature = urlParams.get('sig');
+  
+  if (!verifySecureToken(timestamp, token, signature)) {
+    showError('安全验证失败', '此链接已过期或存在安全风险，请从小程序重新生成上传链接');
+    return;
+  }
+  
+  console.log('安全验证成功，页面正常加载');
+  setTimeout(init, 100);
+});
 
         // 初始化DOM元素引用
         function initializeElements() {
@@ -1199,3 +1185,4 @@
     </script>
 </body>
 </html>
+
