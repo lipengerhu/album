@@ -28,7 +28,7 @@
     setTimeout(init, 100);
 });
         
-     // 替换原来的verifySignature函数
+// 修改HTML中的验证函数
 function verifyToken(timestamp, receivedToken) {
     const now = Math.floor(Date.now() / 1000);
     const requestTime = parseInt(timestamp);
@@ -55,22 +55,22 @@ function verifyToken(timestamp, receivedToken) {
     return true;
 }
 
-// 修改初始化部分，处理token参数
+// 修改页面初始化部分
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
     const timestamp = urlParams.get('t');
-    const token = urlParams.get('token');
+    const token = urlParams.get('token');  // 改为token
     
     console.log('URL参数:', { timestamp, token });
     
     // 检查链接参数
-    if (!timestamp || !token) {
+    if (!timestamp || !token) {  // 改为token
         showError('访问链接无效', '请使用小程序生成的正确链接访问');
         return;
     }
     
     // Token验证
-    if (!verifyToken(timestamp, token)) {
+    if (!verifyToken(timestamp, token)) {  // 改为token
         showError('链接已过期或无效', '请在小程序中重新生成上传链接');
         return;
     }
@@ -79,23 +79,23 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(init, 100);
 });
 
-// 修改callCloudFunction函数，传递token
+// 修改callCloudFunction函数
 async function callCloudFunction(data, signal) {
     try {
         const urlParams = new URLSearchParams(window.location.search);
         const timestamp = urlParams.get('t');
-        const token = urlParams.get('token');
+        const token = urlParams.get('token');  // 改为token
         
         const requestData = {
             ...data,
             timestamp: timestamp,
-            token: token  // 传递token而不是signature
+            token: token  // 改为token
         };
         
         console.log('云函数请求数据:', {
             action: requestData.action,
             timestamp: requestData.timestamp,
-            token: requestData.token
+            token: requestData.token  // 改为token
         });
 
         const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
@@ -1245,6 +1245,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
