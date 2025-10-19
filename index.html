@@ -451,17 +451,18 @@
 }
 
         // 显示安全信息
-        function updateSecurityInfo(openid, timestamp) {
-            const securityDetails = document.getElementById('security-details');
-            const requestTime = new Date(parseInt(timestamp) * 1000);
-            const expiryTime = new Date((parseInt(timestamp) + CONFIG.TOKEN_MAX_AGE) * 1000);
-            
-            securityDetails.innerHTML = `
-                <div style="margin-bottom: 4px;">用户ID: ${openid.substring(0, 8)}***</div>
-                <div style="margin-bottom: 4px;">链接生成: ${requestTime.toLocaleTimeString()}</div>
-                <div style="font-size: 12px; color: #666;">有效期至: ${expiryTime.toLocaleTimeString()}</div>
-            `;
-        }
+       function updateSecurityInfo(timestamp) {
+  const securityDetails = document.getElementById('security-details');
+  const requestTime = new Date(parseInt(timestamp) * 1000);
+  const expiryTime = new Date((parseInt(timestamp) + 600) * 1000);
+  
+  securityDetails.innerHTML = `
+    <div style="margin-bottom: 4px;">🔐 加密链接已验证</div>
+    <div style="margin-bottom: 4px;">链接生成: ${requestTime.toLocaleTimeString()}</div>
+    <div style="font-size: 12px; color: #666;">有效期至: ${expiryTime.toLocaleTimeString()}</div>
+    <div style="font-size: 12px; color: #666; margin-top: 4px;">用户身份信息已加密在Token中</div>
+  `;
+}
 
         // 页面初始化
         document.addEventListener('DOMContentLoaded', function() {
@@ -1033,29 +1034,25 @@
 
         // 调用云函数
         async function callCloudFunction(data, signal) {
-            try {
-                const urlParams = new URLSearchParams(window.location.search);
-                const timestamp = urlParams.get('t');
-                const token = urlParams.get('token');
-                const signature = urlParams.get('sig');
-                const openid = urlParams.get('oid');
-                
-                const requestData = {
-                    ...data,
-                    timestamp: timestamp,
-                    token: token,
-                    signature: signature,
-                    openid: openid
-                };
-                
-                if (data.action !== 'health_check') {
-                    console.log('安全云函数请求:', {
-                        action: data.action,
-                        timestamp: timestamp,
-                        token: token ? token.substring(0, 8) + '...' : 'null',
-                        signature: signature ? signature.substring(0, 8) + '...' : 'null',
-                        openid: openid ? openid.substring(0, 8) + '...' : 'null'
-                    });
+  const urlParams = new URLSearchParams(window.location.search);
+  const timestamp = urlParams.get('t');
+  const token = urlParams.get('token');
+  const signature = urlParams.get('sig');
+  
+  const requestData = {
+    ...data,
+    timestamp: timestamp,
+    token: token,
+    signature: signature
+    // 移除了 openid 字段，因为云函数现在从Token中提取
+  };
+  
+  console.log('安全云函数请求:', {
+    action: data.action,
+    timestamp: timestamp,
+    token: token ? token.substring(0, 8) + '...' : 'null',
+    signature: signature ? signature.substring(0, 8) + '...' : 'null'
+  });
                 }
 
                 const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
@@ -1185,4 +1182,5 @@
     </script>
 </body>
 </html>
+
 
