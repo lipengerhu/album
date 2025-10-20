@@ -416,8 +416,8 @@ function verifySecureToken(timestamp, receivedToken) {
   const now = Math.floor(Date.now() / 1000)
   const requestTime = parseInt(timestamp)
   
-  // 5分钟有效期
-  if (Math.abs(now - requestTime) > 300) {
+  // 10分钟有效期
+  if (Math.abs(now - requestTime) > 600) {
     console.log('安全验证失败: 链接已过期')
     return false
   }
@@ -1197,6 +1197,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
