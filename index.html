@@ -454,6 +454,13 @@ function showUploadError(title, message) {
     startUploadBtn.disabled = true;
     startUploadBtn.textContent = '链接无效';
   }
+    // 🎯 新增：停止所有上传进程
+uploadInProgress = false;
+if (currentUploadController) {
+  currentUploadController.abort();
+  currentUploadController = null;
+}
+updateUploadButton();
 }
 
   // 修改安全验证函数
@@ -918,6 +925,13 @@ function init() {
 
         // 继续上传下一个文件
         async function continueUpload() {
+             const hasLinkError = selectedFiles.some(file => file.error === '链接无效');
+  if (hasLinkError) {
+    console.log('检测到链接无效错误，停止上传流程');
+    uploadInProgress = false;
+    updateUploadButton();
+    return;
+  }
             const visibleFiles = selectedFiles.filter(f => f.status !== 'cancelled');
             const pendingFiles = visibleFiles.filter(f => f.status === 'pending' || f.status === 'error');
             
@@ -1030,14 +1044,13 @@ function init() {
                         updateFileList();
                         throw error;
                     }
-                      // 🎯 新增：链接无效错误特殊处理
-  if (error.message === 'LINK_INVALID') {
+   if (error.message === 'LINK_INVALID') {
     fileData.status = 'error';
     fileData.error = '链接无效';
     updateFileList();
-    throw error; // 不再重试
+    return; // 🎯 重要：直接返回，不再抛出错误，避免重试
   }
-                    
+                                         
                     retryCount++;
                     
                     if (retryCount > CONFIG.MAX_RETRIES) {
@@ -1138,8 +1151,7 @@ async function callCloudFunction(data, signal) {
         // 🎯 新增：链接无效的特殊提示
   if (error.message === 'LINK_INVALID') {
     showUploadError('链接不正确', '请回到小程序重新复制粘贴链接');
-    throw error; // 继续抛出错误，停止上传流程
-  }
+return { success: false, message: '链接无效' }; // 🎯 直接返回，不抛出错误  }
     
     return {
       success: false,
@@ -1259,6 +1271,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
