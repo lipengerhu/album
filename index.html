@@ -47,27 +47,7 @@
             font-size: 14px;
         }
         
-        .security-info {
-            background: #e3f2fd;
-            border: 1px solid #bbdefb;
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 20px;
-            font-size: 13px;
-        }
         
-        .security-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #1565c0;
-        }
-        
-        .security-icon {
-            margin-right: 8px;
-            font-size: 16px;
-        }
         
         .upload-area { 
             border: 2px dashed #4CAF50; 
@@ -320,13 +300,6 @@
             <p class="subtitle">加密链接保障您的照片隐私</p>
         </div>
         
-        <div class="security-info">
-            <div class="security-header">
-                <span class="security-icon">🔒</span>
-                安全验证通过
-            </div>
-            <div id="security-details">正在验证上传权限...</div>
-        </div>
         
         <div class="service-status" id="service-status">
             检查服务状态...
@@ -509,9 +482,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   
   console.log('✅ 参数完整，开始初始化页面');
   
-  // 更新安全信息（只显示，不验证）
-  updateSecurityInfo(timestamp, token);
-  
+   
   // 初始化页面
   setTimeout(init, 100);
 });
@@ -1273,6 +1244,7 @@ return { success: false, message: '链接无效' }; // 🎯 直接返回，不�
     </script>
 </body>
 </html>
+
 
 
 
