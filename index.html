@@ -471,7 +471,7 @@ function verifySecureToken(timestamp, receivedToken) {
   const requestTime = parseInt(timestamp)
   
   // 10分钟有效期
-  if (Math.abs(now - requestTime) > 600) {
+ if (now - requestTime > 600) {
     console.log('安全验证失败: 链接已过期')
     return false
   }
@@ -1271,6 +1271,7 @@ return { success: false, message: '链接无效' }; // 🎯 直接返回，不�
     </script>
 </body>
 </html>
+
 
 
 
