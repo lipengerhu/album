@@ -409,64 +409,25 @@
             `;
         }
 
-        // 增强的安全Token验证
-        // 增强的安全Token验证 - 修改为HMAC验证
-// 增强的安全Token验证 - 修正时间戳提取逻辑
-function verifySecureToken(timestamp, receivedToken) {
-  console.log('开始HMAC安全验证:', {
-    timestamp: timestamp,
-    token: receivedToken
-  });
+  function verifySecureToken(timestamp, receivedToken) {
+  console.log('基础参数检查:', { timestamp, receivedToken });
   
-  const now = Math.floor(Date.now() / 1000);
-  const requestTime = parseInt(timestamp);
-  
-  console.log('时间验证:', {
-    当前时间: now,
-    请求时间: requestTime,
-    时间差: Math.abs(now - requestTime)
-  });
-  
-  // 1. 必需参数检查
+  // 只做最基本的格式检查，真正的验证在云函数
   if (!timestamp || !receivedToken) {
-    console.log('安全验证失败: 参数不完整');
+    console.log('参数不完整');
     return false;
   }
   
-  // 2. 时间戳验证（10分钟有效期）
-  if (Math.abs(now - requestTime) > 600) {
-    console.log('安全验证失败: 链接已过期');
+  // 检查时间戳格式
+  if (isNaN(parseInt(timestamp))) {
+    console.log('时间戳格式错误');
     return false;
   }
   
-  // 3. Token长度验证（至少12位：4位掩码openid + 时间戳 + 8位签名）
-  if (receivedToken.length < 12) {
-    console.log('安全验证失败: Token长度无效，当前长度:', receivedToken.length);
-    return false;
-  }
-  
-  // 4. 从Token中提取时间戳部分
-  // 掩码openid(4位) + 时间戳(10位) + 签名(8位) = 22位
-  const tokenTimestamp = receivedToken.substring(4, 14); // 提取第5-14位作为时间戳
-  
-  console.log('时间戳比对:', {
-    url时间戳: timestamp,
-    token时间戳: tokenTimestamp,
-    是否一致: tokenTimestamp === timestamp.toString()
-  });
-  
-  // 5. 验证时间戳一致性
-  if (tokenTimestamp !== timestamp.toString()) {
-    console.log('安全验证失败: 时间戳不一致');
-    return false;
-  }
-  
-  console.log('✅ 前端HMAC安全验证通过');
+  console.log('✅ 基础参数检查通过');
   return true;
 }
 
-// 页面初始化
-// 页面初始化
 document.addEventListener('DOMContentLoaded', async function() {
   console.log('=== 页面开始初始化 ===');
   
@@ -476,23 +437,16 @@ document.addEventListener('DOMContentLoaded', async function() {
   
   console.log('URL参数:', { timestamp, token });
   
-  // 检查链接参数
+  // 只检查参数是否存在，不验证内容
   if (!timestamp || !token) {
     console.log('参数缺失，显示错误');
     showError('访问链接无效', '请使用小程序生成的正确链接访问');
     return;
   }
   
-  // Token验证
-  if (!verifySecureToken(timestamp, token)) {
-    console.log('Token验证失败，显示错误');
-    showError('链接已过期或无效', '请在小程序中重新生成上传链接');
-    return;
-  }
+  console.log('✅ 参数完整，开始初始化页面');
   
-  console.log('✅ HMAC Token验证成功，开始初始化页面');
-  
-  // 更新安全信息
+  // 更新安全信息（只显示，不验证）
   updateSecurityInfo(timestamp, token);
   
   // 初始化页面
@@ -503,16 +457,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   const requestTime = new Date(parseInt(timestamp) * 1000);
   const expiryTime = new Date((parseInt(timestamp) + 600) * 1000);
   
-  // 从token中提取掩码openid
-  const maskedOpenid = token.substring(0, 4);
-  
   if (securityDetails) {
     securityDetails.innerHTML = `
-      <div style="margin-bottom: 4px;">🔐 HMAC安全验证通过</div>
-      <div style="margin-bottom: 4px;">用户标识: ${maskedOpenid}***</div>
+      <div style="margin-bottom: 4px;">🔐 数据库令牌验证</div>
+      <div style="margin-bottom: 4px;">令牌: ${token.substring(0, 8)}***</div>
       <div style="margin-bottom: 4px;">链接生成: ${requestTime.toLocaleTimeString()}</div>
       <div style="font-size: 12px; color: #666;">有效期至: ${expiryTime.toLocaleTimeString()}</div>
-      <div style="font-size: 12px; color: #666; margin-top: 4px;">HMAC签名保护</div>
+      <div style="font-size: 12px; color: #666; margin-top: 4px;">服务器端安全验证</div>
     `;
   }
 }
@@ -1238,6 +1189,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
