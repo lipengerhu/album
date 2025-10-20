@@ -409,23 +409,31 @@
             `;
         }
 
-  function verifySecureToken(timestamp, receivedToken) {
-  console.log('基础参数检查:', { timestamp, receivedToken });
+  // 修改安全验证函数
+function verifySecureToken(timestamp, receivedToken) {
+  console.log('基础参数检查:', { timestamp, receivedToken })
   
-  // 只做最基本的格式检查，真正的验证在云函数
+  const now = Math.floor(Date.now() / 1000)
+  const requestTime = parseInt(timestamp)
+  
+  // 5分钟有效期
+  if (Math.abs(now - requestTime) > 300) {
+    console.log('安全验证失败: 链接已过期')
+    return false
+  }
+  
   if (!timestamp || !receivedToken) {
-    console.log('参数不完整');
-    return false;
+    console.log('安全验证失败: 参数不完整')
+    return false
   }
   
-  // 检查时间戳格式
-  if (isNaN(parseInt(timestamp))) {
-    console.log('时间戳格式错误');
-    return false;
+  if (receivedToken.length !== 16) {
+    console.log('安全验证失败: Token格式无效')
+    return false
   }
   
-  console.log('✅ 基础参数检查通过');
-  return true;
+  console.log('✅ 基础验证通过')
+  return true
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -1189,6 +1197,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
