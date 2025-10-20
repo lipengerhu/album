@@ -641,7 +641,7 @@ async function handleFileSelect(e) {
             });
             validFilesAdded++;
         }
-    
+    }
     
     if (validFilesAdded > 0) {
         updateFileList();
@@ -651,7 +651,6 @@ async function handleFileSelect(e) {
     
     elements.fileInput.value = '';
 }
-
         // 提取照片信息
         async function extractFileInfo(file) {
             return new Promise((resolve) => {
@@ -1280,6 +1279,7 @@ return { success: false, message: '链接无效' }; // 🎯 直接返回，不�
     </script>
 </body>
 </html>
+
 
 
 
