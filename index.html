@@ -346,6 +346,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@1.0.2/dist/heic2any.min.js"></script>
+
     <script>
         // 配置信息
         const CONFIG = {
@@ -579,33 +581,75 @@ function init() {
         }
 
         // 文件选择处理
-        async function handleFileSelect(e) {
-            const files = Array.from(e.target.files);
-            if (files.length === 0) return;
-            
-            let validFilesAdded = 0;
-            
-            for (const file of files) {
-    const existingFile = selectedFiles.find(f => 
-      f.file.name === file.name && f.file.size === file.size
-    );
+        // 文件选择处理
+async function handleFileSelect(e) {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    
+    let validFilesAdded = 0;
+    
+    for (const file of files) {
+        // 🎯 新增：HEIC转JPG处理开始
+        let processedFile = file;
+        
+        // 检查是否是HEIC文件
+        const isHeic = file.name.toLowerCase().endsWith('.heic') || 
+                      file.type === 'image/heic' || 
+                      file.type === 'image/heif';
+        
+        if (isHeic) {
+            try {
+                console.log('检测到HEIC文件，开始转换:', file.name);
+                const conversionResult = await heic2any({
+                    blob: file,
+                    toType: "image/jpeg",
+                    quality: 0.8
+                });
                 
-                if (!existingFile && selectedFiles.length < CONFIG.MAX_FILES) {
-      // 提取照片信息 - 这里需要await
-      const fileInfo = await extractFileInfo(file);
-                    
-                    selectedFiles.push({
-                        file: file,
-                        status: 'pending',
-                        progress: 0,
-                        fingerprint: null,
-                        fileId: null,
-                        error: null,
-                        fileInfo: fileInfo
-                    });
-                    validFilesAdded++;
-                }
+                // 创建新的JPG文件对象
+                const newFileName = file.name.replace(/\.heic$/i, '.jpg');
+                processedFile = new File([conversionResult], newFileName, {
+                    type: 'image/jpeg',
+                    lastModified: file.lastModified
+                });
+                
+                console.log('HEIC转换成功:', file.name, '→', processedFile.name);
+            } catch (error) {
+                console.error('HEIC转换失败:', file.name, error);
+                // 转换失败时继续使用原始文件
             }
+        }
+        // 🎯 新增：HEIC转JPG处理结束
+        
+        const existingFile = selectedFiles.find(f => 
+            f.file.name === processedFile.name && f.file.size === processedFile.size
+        );
+        
+        if (!existingFile && selectedFiles.length < CONFIG.MAX_FILES) {
+            // 提取照片信息 - 这里需要await
+            const fileInfo = await extractFileInfo(processedFile);
+            
+            selectedFiles.push({
+                file: processedFile,
+                status: 'pending',
+                progress: 0,
+                fingerprint: null,
+                fileId: null,
+                error: null,
+                fileInfo: fileInfo
+            });
+            validFilesAdded++;
+        }
+    }
+    
+    if (validFilesAdded > 0) {
+        updateFileList();
+        updateUploadButton();
+        updateStats();
+    }
+    
+    elements.fileInput.value = '';
+}
             
             if (validFilesAdded > 0) {
                 updateFileList();
@@ -1244,6 +1288,7 @@ return { success: false, message: '链接无效' }; // 🎯 直接返回，不�
     </script>
 </body>
 </html>
+
 
 
 
