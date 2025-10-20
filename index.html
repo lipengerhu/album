@@ -408,6 +408,53 @@
                 </div>
             `;
         }
+        // 🎯 新增：上传过程中的错误提示
+function showUploadError(title, message) {
+  // 创建或显示错误提示框
+  let errorDiv = document.getElementById('upload-error-message');
+  
+  if (!errorDiv) {
+    errorDiv = document.createElement('div');
+    errorDiv.id = 'upload-error-message';
+    errorDiv.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      text-align: center;
+      max-width: 400px;
+      width: 90%;
+      z-index: 1000;
+    `;
+    document.body.appendChild(errorDiv);
+  }
+  
+  errorDiv.innerHTML = `
+    <div style="font-size: 48px; margin-bottom: 16px;">🚫</div>
+    <h2 style="color: #dc3545; margin-bottom: 12px; font-size: 18px;">${title}</h2>
+    <p style="color: #666; line-height: 1.5; margin-bottom: 20px;">${message}</p>
+    <button onclick="this.parentElement.style.display='none'" style="
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    ">知道了</button>
+  `;
+  
+  // 禁用上传按钮
+  const startUploadBtn = document.getElementById('start-upload');
+  if (startUploadBtn) {
+    startUploadBtn.disabled = true;
+    startUploadBtn.textContent = '链接无效';
+  }
+}
 
   // 修改安全验证函数
 function verifySecureToken(timestamp, receivedToken) {
@@ -1068,6 +1115,9 @@ async function callCloudFunction(data, signal) {
     });
     
     if (!response.ok) {
+        if (response.status === 403) {
+    throw new Error('LINK_INVALID');
+  }
       throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
     
@@ -1078,6 +1128,11 @@ async function callCloudFunction(data, signal) {
     if (error.name === 'AbortError') {
       throw error;
     }
+        // 🎯 新增：链接无效的特殊提示
+  if (error.message === 'LINK_INVALID') {
+    showUploadError('链接不正确', '请回到小程序重新复制粘贴链接');
+    throw error; // 继续抛出错误，停止上传流程
+  }
     
     return {
       success: false,
@@ -1197,6 +1252,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
