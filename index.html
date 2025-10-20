@@ -411,6 +411,7 @@
 
         // 增强的安全Token验证
         // 增强的安全Token验证 - 修改为HMAC验证
+// 增强的安全Token验证 - 修正时间戳提取逻辑
 function verifySecureToken(timestamp, receivedToken) {
   console.log('开始HMAC安全验证:', {
     timestamp: timestamp,
@@ -440,19 +441,21 @@ function verifySecureToken(timestamp, receivedToken) {
   
   // 3. Token长度验证（至少12位：4位掩码openid + 时间戳 + 8位签名）
   if (receivedToken.length < 12) {
-    console.log('安全验证失败: Token长度无效');
+    console.log('安全验证失败: Token长度无效，当前长度:', receivedToken.length);
     return false;
   }
   
-  // 4. Token格式验证
-  const tokenPattern = /^[a-zA-Z0-9]{12,}$/;
-  if (!tokenPattern.test(receivedToken)) {
-    console.log('安全验证失败: Token格式无效');
-    return false;
-  }
+  // 4. 从Token中提取时间戳部分
+  // 掩码openid(4位) + 时间戳(10位) + 签名(8位) = 22位
+  const tokenTimestamp = receivedToken.substring(4, 14); // 提取第5-14位作为时间戳
+  
+  console.log('时间戳比对:', {
+    url时间戳: timestamp,
+    token时间戳: tokenTimestamp,
+    是否一致: tokenTimestamp === timestamp.toString()
+  });
   
   // 5. 验证时间戳一致性
-  const tokenTimestamp = receivedToken.substring(4, receivedToken.length - 8);
   if (tokenTimestamp !== timestamp.toString()) {
     console.log('安全验证失败: 时间戳不一致');
     return false;
@@ -1235,6 +1238,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
