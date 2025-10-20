@@ -582,6 +582,7 @@ function init() {
 
         // 文件选择处理
         // 文件选择处理
+// 文件选择处理
 async function handleFileSelect(e) {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
@@ -650,15 +651,6 @@ async function handleFileSelect(e) {
     
     elements.fileInput.value = '';
 }
-            
-            if (validFilesAdded > 0) {
-                updateFileList();
-                updateUploadButton();
-                updateStats();
-            }
-            
-            elements.fileInput.value = '';
-        }
 
         // 提取照片信息
         async function extractFileInfo(file) {
@@ -1288,6 +1280,7 @@ return { success: false, message: '链接无效' }; // 🎯 直接返回，不�
     </script>
 </body>
 </html>
+
 
 
 
