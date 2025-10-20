@@ -472,8 +472,9 @@ function verifySecureToken(timestamp, receivedToken) {
   
   // 10分钟有效期
  if (now - requestTime > 600) {
-    console.log('安全验证失败: 链接已过期')
-    return false
+   console.log('链接已过期，显示错误页面');
+    showError('链接已过期', '此链接已超过10分钟有效期，请在小程序中重新生成');
+    return false;
   }
   
   if (!timestamp || !receivedToken) {
@@ -1271,6 +1272,7 @@ return { success: false, message: '链接无效' }; // 🎯 直接返回，不�
     </script>
 </body>
 </html>
+
 
 
 
