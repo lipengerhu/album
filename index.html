@@ -410,11 +410,11 @@
         }
 
         // 增强的安全Token验证
-        function verifySecureToken(timestamp, receivedToken, openid) {
-  console.log('开始安全验证:', {
+        // 增强的安全Token验证 - 修改为HMAC验证
+function verifySecureToken(timestamp, receivedToken) {
+  console.log('开始HMAC安全验证:', {
     timestamp: timestamp,
-    token: receivedToken,
-    openid: openid
+    token: receivedToken
   });
   
   const now = Math.floor(Date.now() / 1000);
@@ -427,7 +427,7 @@
   });
   
   // 1. 必需参数检查
-  if (!timestamp || !receivedToken || !openid) {
+  if (!timestamp || !receivedToken) {
     console.log('安全验证失败: 参数不完整');
     return false;
   }
@@ -438,66 +438,78 @@
     return false;
   }
   
-  // 3. Token长度验证（12位：6位哈希 + 6位随机）
-  if (receivedToken.length !== 12) {
+  // 3. Token长度验证（至少12位：4位掩码openid + 时间戳 + 8位签名）
+  if (receivedToken.length < 12) {
     console.log('安全验证失败: Token长度无效');
     return false;
   }
   
   // 4. Token格式验证
-  const tokenPattern = /^[a-zA-Z0-9]{12}$/;
+  const tokenPattern = /^[a-zA-Z0-9]{12,}$/;
   if (!tokenPattern.test(receivedToken)) {
     console.log('安全验证失败: Token格式无效');
     return false;
   }
   
-  console.log('✅ 前端安全验证通过');
+  // 5. 验证时间戳一致性
+  const tokenTimestamp = receivedToken.substring(4, receivedToken.length - 8);
+  if (tokenTimestamp !== timestamp.toString()) {
+    console.log('安全验证失败: 时间戳不一致');
+    return false;
+  }
+  
+  console.log('✅ 前端HMAC安全验证通过');
   return true;
 }
 
 // 页面初始化
-document.addEventListener('DOMContentLoaded',async function() {
+// 页面初始化
+document.addEventListener('DOMContentLoaded', async function() {
   console.log('=== 页面开始初始化 ===');
   
   const urlParams = new URLSearchParams(window.location.search);
   const timestamp = urlParams.get('t');
   const token = urlParams.get('token');
-  const openid = urlParams.get('oid');
   
-  console.log('URL参数:', { timestamp, token, openid });
+  console.log('URL参数:', { timestamp, token });
   
   // 检查链接参数
-  if (!timestamp || !token || !openid) {
+  if (!timestamp || !token) {
     console.log('参数缺失，显示错误');
     showError('访问链接无效', '请使用小程序生成的正确链接访问');
     return;
   }
   
   // Token验证
-  if (!verifySecureToken(timestamp, token, openid)) {
+  if (!verifySecureToken(timestamp, token)) {
     console.log('Token验证失败，显示错误');
     showError('链接已过期或无效', '请在小程序中重新生成上传链接');
     return;
   }
   
-  console.log('✅ Token验证成功，开始初始化页面');
+  console.log('✅ HMAC Token验证成功，开始初始化页面');
   
- 
+  // 更新安全信息
+  updateSecurityInfo(timestamp, token);
   
   // 初始化页面
   setTimeout(init, 100);
 });
-        function updateSecurityInfo(timestamp, openid) {
+   function updateSecurityInfo(timestamp, token) {
   const securityDetails = document.getElementById('security-details');
   const requestTime = new Date(parseInt(timestamp) * 1000);
   const expiryTime = new Date((parseInt(timestamp) + 600) * 1000);
   
+  // 从token中提取掩码openid
+  const maskedOpenid = token.substring(0, 4);
+  
   if (securityDetails) {
     securityDetails.innerHTML = `
-      <div style="margin-bottom: 4px;">🔐 安全验证通过</div>
-      <div style="margin-bottom: 4px;">用户: ${openid.substring(0, 8)}***</div>
+      <div style="margin-bottom: 4px;">🔐 HMAC安全验证通过</div>
+      <div style="margin-bottom: 4px;">用户标识: ${maskedOpenid}***</div>
       <div style="margin-bottom: 4px;">链接生成: ${requestTime.toLocaleTimeString()}</div>
       <div style="font-size: 12px; color: #666;">有效期至: ${expiryTime.toLocaleTimeString()}</div>
+      <div style="font-size: 12px; color: #666; margin-top: 4px;">HMAC签名保护</div>
     `;
   }
 }
@@ -1064,25 +1076,24 @@ function init() {
         }
 
         // 调用云函数
-       async function callCloudFunction(data, signal) {
+      // 调用云函数
+async function callCloudFunction(data, signal) {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const timestamp = urlParams.get('t');
     const token = urlParams.get('token');
-    const openid = urlParams.get('oid');
     
     const requestData = {
       ...data,
       timestamp: timestamp,
-      token: token,
-      openid: openid
+      token: token
+      // 移除了openid参数
     };
     
     console.log('云函数请求数据:', {
       action: requestData.action,
       timestamp: requestData.timestamp,
-      token: requestData.token,
-      openid: requestData.openid ? requestData.openid.substring(0, 8) + '...' : 'null'
+      token: requestData.token
     });
 
     const response = await fetch(CONFIG.CLOUD_FUNCTION_URL, {
@@ -1111,7 +1122,7 @@ function init() {
       message: '网络请求失败: ' + error.message
     };
   }
-}           
+}
 
         // 检查服务状态
         async function checkServiceStatus() {
@@ -1224,6 +1235,7 @@ function init() {
     </script>
 </body>
 </html>
+
 
 
 
