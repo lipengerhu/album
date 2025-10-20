@@ -1030,6 +1030,13 @@ function init() {
                         updateFileList();
                         throw error;
                     }
+                      // 🎯 新增：链接无效错误特殊处理
+  if (error.message === 'LINK_INVALID') {
+    fileData.status = 'error';
+    fileData.error = '链接无效';
+    updateFileList();
+    throw error; // 不再重试
+  }
                     
                     retryCount++;
                     
@@ -1252,6 +1259,7 @@ async function callCloudFunction(data, signal) {
     </script>
 </body>
 </html>
+
 
 
 
