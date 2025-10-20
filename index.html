@@ -1136,9 +1136,9 @@ async function callCloudFunction(data, signal) {
     });
     
     if (!response.ok) {
-        if (response.status === 403) {
-    throw new Error('LINK_INVALID');
-  }
+    if (response.status === 403) {
+throw new Error('LINK_INVALID');  // 🚨 这行没有缩进
+}
       throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
     
@@ -1272,6 +1272,7 @@ return { success: false, message: '链接无效' }; // 🎯 直接返回，不�
     </script>
 </body>
 </html>
+
 
 
 
